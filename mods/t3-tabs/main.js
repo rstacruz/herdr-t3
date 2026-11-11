@@ -2,7 +2,7 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex, Popup } from "gpui-base";
 import { spaces, panes, agents, terminals, run, openOverlay, focused, hc, notify, theme, window, layout, settings, props, shared, setShared, nextCommand } from "herdr";
 import { modStatus, namer, programOf } from "./name.js";
-import { notNews, ownStatus, stillSettled, subAgents, treeStatus } from "./tree.js";
+import { notNews, ownStatus, snoozeOf, stillSettled, subAgents, treeStatus } from "./tree.js";
 import { tip, glow } from "./tip.js";
 import { detailsFor, detailsAt, detailsWatch } from "./details.js";
 import { programIcon } from "./program.js";
@@ -16,13 +16,13 @@ const inboxShown = () => sidebarParts(layout()).stack?.active === "inbox";
 
 // What the hidden sidebar's toggle counts, as the selected sidebar shows it. In the Inbox an agent settled there isn't news
 // while it stays settled, and a snoozed one, until it wakes, isn't news either, working or done; while it or what's under it
-// needs the person it shows there, so it counts here too. In Lists either only loses its done dot.
+// needs the person it shows there, so it counts here too, unless it was snoozed through that need. In Lists either only loses its done dot.
 function awake(st, under, inbox) {
   const now = Date.now(), byAddress = new Map(terminals().map((k) => [k.address, k]));
   return agents().filter((a) => {
-    const k = byAddress.get(a.address), s = st(a);
+    const k = byAddress.get(a.address), s = st(a), nap = snoozeOf(k?.labels?.snoozed), napping = nap.until > now;
     if (!inbox) return !(s === "done" && notNews(k, a.status, under(a.address)));
-    return s === "blocked" || (!stillSettled(k, a.status, under(a.address)) && !(Number(k?.labels?.snoozed) > now));
+    return (s === "blocked" && !(napping && nap.held)) || (!stillSettled(k, a.status, under(a.address)) && !napping);
   });
 }
 
@@ -164,7 +164,7 @@ export default class Tabs extends View {
       if (n.action !== "Unpinned") {
         if (!await this.writeLabel(u.address, "settled", "")) { failed.unshift(u); continue; }
         back = u.address;
-        if (Number(u.snoozed) > Date.now()) await this.writeLabel(u.address, "snoozed", u.snoozed);
+        if (snoozeOf(u.snoozed).until > Date.now()) await this.writeLabel(u.address, "snoozed", u.snoozed);
       }
       const pins = [...(shared("agents.pins") ?? [])];
       if (u.pins.includes(u.address) && !pins.includes(u.address)) {

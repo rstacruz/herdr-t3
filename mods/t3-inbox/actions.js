@@ -2,9 +2,13 @@ import { focused, run, shared, setShared, props, notify, openOverlay } from "her
 import { focusAgent, focusPane } from "./zoom.js";
 import { detailsFor } from "./details.js";
 import { placeOf } from "./project.js";
+import { openNapMenu } from "./snooze.js";
+
+// A snooze label: held when taken while it needs the person, so that need doesn't show it again (tree.js snoozeOf).
+const napLabel = (at, held) => `${at}${held ? ":held" : ""}`;
 
 export function inboxActions(view, model) {
-  const { every, viewing, term, napUntil, wake, state, settledAt, busy, pinned, out, busyRows, sp, ps, put } = model;
+  const { every, viewing, term, napUntil, napHeld, wake, state, settledAt, busy, pinned, out, busyRows, sp, ps, put } = model;
   // A row moving away from under the pointer reports no leave.
   const away = (a, cx) => {
     if (view.hovered !== a.address) return;
@@ -45,7 +49,7 @@ export function inboxActions(view, model) {
   const settle = (xs, cx) => {
     const panes = xs.filter((a) => a.mod), kept = xs.filter((a) => !a.mod), seen = kept.find(viewing);
     for (const a of xs) away(a, cx);
-    const naps = new Map(kept.map((a) => [a, napUntil(a)]));
+    const naps = new Map(kept.map((a) => [a, { until: napUntil(a), held: napHeld(a) }]));
     const before = [...(shared("agents.pins") ?? [])];
     const took = kept.map((a) => a.address);
     if (before.some((p) => took.includes(p))) setShared("agents.pins", before.filter((p) => !took.includes(p)));
@@ -55,7 +59,7 @@ export function inboxActions(view, model) {
       view.setLabel("settled", a.address, `${Date.now()}:${term.get(a.address)?.turn ?? 0}${busy(a) ? ":run" : ""}`, cx, () => {
         if (!undone && before.includes(a.address)) repin(before, [a.address]);
       });
-      if (naps.get(a)) wake(a, cx);
+      if (naps.get(a).until) wake(a, cx);
     }
     // Undone, they're back where they were: no news, as T3 restores a thread, with its pin and a snooze that hasn't
     // run out.
@@ -64,7 +68,7 @@ export function inboxActions(view, model) {
       repin(before, took);
       for (const a of kept) {
         view.setLabel("settled", a.address, "", cx);
-        if (naps.get(a) > Date.now()) view.setLabel("snoozed", a.address, String(naps.get(a)), cx);
+        if (naps.get(a).until > Date.now()) view.setLabel("snoozed", a.address, napLabel(naps.get(a).until, naps.get(a).held), cx);
       }
       bringBack(seen);
     }, cx);
@@ -72,9 +76,10 @@ export function inboxActions(view, model) {
     for (const a of panes) run(props()?.home ? `t3-tabs.close-pane:${a.pane}` : "pane.close", props()?.home ? undefined : { pane: a.pane });
     return moved;
   };
+  // Needing the person, it's snoozed through that need: hidden until it wakes, or until the next need (main.js).
   const snooze = (a, at, cx) => {
     const seen = viewing(a);
-    view.setLabel("snoozed", a.address, String(at), cx);
+    view.setLabel("snoozed", a.address, napLabel(at, state(a) === "blocked"), cx);
     view.remember("Snoozed", 1, (cx) => { wake(a, cx); if (seen) bringBack(a); }, cx);
     // The card moves away without a pointer-leave event, for it or for the clock under the pointer.
     view.napMenu = view.hovered = view.hot = null;
@@ -95,10 +100,14 @@ export function inboxActions(view, model) {
     view.napAt = -1;
     notify({ title: "Couldn't snooze the agent", body: "That time has passed. Choose another.", level: "warning" });
   };
-  // The Custom dialog's answer. By then it may have come to need the person, which T3 refuses too.
+  // The Custom dialog's answer.
   view.customSnooze = (answer, cx) => {
     const i = answer.lastIndexOf(":"), at = Number(answer.slice(i + 1)), a = every.find((x) => x.address === answer.slice(0, i));
-    if (a && state(a) !== "blocked" && at > Date.now()) snooze(a, at, cx);
+    if (a && at > Date.now()) snooze(a, at, cx);
+  };
+  // Snooze… from a card's menu (t3-menu): the card's own snooze menu, as its clock opens it by keys.
+  view.snoozeAgent = (address, cx) => {
+    if ([...pinned, ...out, ...busyRows].some((a) => a.address === address && !a.mod)) openNapMenu(view, address, cx);
   };
   // The settle key: the agent in view, as its card's Settle (finished) or its settled row's undo.
   view.settleKey = (cx) => {

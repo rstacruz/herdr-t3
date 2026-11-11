@@ -7,7 +7,8 @@
 // Settle closes it: no Settled, no Undo, no pin and no drag.
 // Snoozed, as T3's: `snoozed=<wake ms>` hides an agent, working or not, on a shelf of its own until then, and it wakes
 // where it was, marked Woke until looked at. It shows meanwhile while it needs the person; a failure, a new turn in
-// view, Wake, a pin or Settle ends it.
+// view, Wake, a pin or Settle ends it. Snoozed while it needs the person, `<wake ms>:held` keeps it hidden through that
+// need, a failure too; once the need is over the mark goes, and the next need shows it again (tree.js).
 
 import { View } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
@@ -82,6 +83,7 @@ export default class Inbox extends View {
     cx.timer.every(60000, (cx) => cx.notify());
     // `t3-inbox.clear`: Clear's confirm dialog. `t3-inbox.settle`: the settle key standalone (keys.json); the layout binds `t3-tabs.settle`, which the tab bar handles even when hidden.
     // `t3-inbox.custom-snooze:<address>:<wake ms>`: the Custom dialog, a copy of this mod with no loop of its own.
+    // `t3-inbox.snooze:<address>`: Snooze… from a card's menu (t3-menu) opens the card's snooze menu.
     // `t3-inbox.undo`: the undo notice's Undo, when the sidebar footer (t3-chrome) shows it.
     cx.spawn(async (cx) => {
       for (;;) {
@@ -91,6 +93,7 @@ export default class Inbox extends View {
         else if (command.startsWith("settle:")) /** @type {any} */ (this).settleAgent?.(command.slice("settle:".length), cx);
         else if (command === "clear") /** @type {any} */ (this).clearSettled?.();
         else if (command.startsWith("custom-snooze:")) /** @type {any} */ (this).customSnooze?.(command.slice("custom-snooze:".length), cx);
+        else if (command.startsWith("snooze:")) /** @type {any} */ (this).snoozeAgent?.(command.slice("snooze:".length), cx);
         // `t3-inbox.unread:<address>`: Mark unread, from a card's menu (t3-menu).
         else if (command.startsWith("unread:")) this.markUnread(command.slice("unread:".length), cx);
         else if (command === "undo") this.undo(cx);
@@ -260,7 +263,7 @@ export default class Inbox extends View {
       for (const [k, v] of Object.entries(of)) if (!term.has(k) || (!this.writing[`${key} ${k}`]?.unsure && (term.get(k).labels?.[key] ?? "") === v)) delete of[k];
     }
     const fields = inboxFields({ every, all, term, pending: this.pending, changed: this.changed, now, inView });
-    const { viewing, settledAt, kids, state, running, napUntil, hidden, since, working, begun } = fields;
+    const { viewing, settledAt, kids, state, running, napUntil, napHeld, hidden, since, working, begun } = fields;
     // New work brings a settled agent back (tree.js). Hidden ones too.
     for (const a of every) {
       const label = this.pending.settled[a.address] ?? term.get(a.address)?.labels?.settled;
@@ -271,12 +274,14 @@ export default class Inbox extends View {
     const wake = (a, cx) => this.setLabel("snoozed", a.address, "", cx);
     // A snooze ends on a failure in its tree (a program's error doesn't stay said), a new turn in view (the person gave
     // it work), or being looked at once it has woken. A pin ends it too, as the pinning writes the label.
+    // Held through a need, a failure doesn't end it; the need over, the mark goes.
     const failed = (a) => term.get(a.address)?.status === "error" || descendants(all, a.address).some((k) => k.status === "error");
     for (const a of every) {
       const until = napUntil(a);
       if (!until) continue;
       const turned = window().active && viewing(a) && running(a) && ["idle", "done"].includes(this.changed[a.address]?.s);
-      if (failed(a) || turned || (window().active && viewing(a) && until <= now)) this.setLabelDue("snoozed", a.address, "", cx);
+      if ((failed(a) && !napHeld(a)) || turned || (window().active && viewing(a) && until <= now)) this.setLabelDue("snoozed", a.address, "", cx);
+      else if (napHeld(a) && state(a) !== "blocked") this.setLabelDue("snoozed", a.address, String(until), cx);
     }
     const tabs = new Map(sp.flatMap((s) => s.tabs.map((c) => [c.id, c])));
     this.track(every.map((a) => ({
@@ -293,8 +298,8 @@ export default class Inbox extends View {
       working: working(a), viewing: viewing(a), since: since(a), begun: begun(a), napUntil: napUntil(a) })),
       { scope: within, pins, workOpen: this.workOpen, napOpen: this.napOpen, open: this.open, limit: this.limit });
     const { pinned, out, work, nap, put, busyRows, napRows, rows, next } = sections;
-    // A menu whose card went (snoozed, gone) or now needs the person closes, as T3's.
-    if (this.napMenu && ![...pinned, ...out, ...busyRows].some((a) => a.address === this.napMenu && state(a) !== "blocked")) this.napMenu = null;
+    // A menu whose card went (snoozed, gone) closes, as T3's. One that comes to need the person stays: that can be snoozed too.
+    if (this.napMenu && ![...pinned, ...out, ...busyRows].some((a) => a.address === this.napMenu)) this.napMenu = null;
     // Back on time: the next wake redraws (the minute tick would be up to a minute late).
     if (next !== this.nextWake) {
       this.wakeTimer?.cancel();

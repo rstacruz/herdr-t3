@@ -8,17 +8,19 @@ import { MOTION } from "./motion.js";
 
 // A custom snooze can be far off; its timer needn't be.
 export const DAY = 86400000;
-// Base UI's collision padding, and the Snooze menu's width. shortcut: the width is the presets' widest as drawn, not measured; measure it if presets become editable.
-const NAP_MENU_MARGIN = 5, NAP_MENU_W = 180;
+// Base UI's collision padding, and the Snooze menu's width. shortcut: the width is the presets' widest as drawn
+// (Tomorrow afternoon's), not measured; measure it if presets become editable.
+const NAP_MENU_MARGIN = 5, NAP_MENU_W = 211;
 
-// T3's default snooze menu, in local time: soonest first, one row per wake minute, tonight's gone once it's past.
+// T3's default snooze menu, plus tomorrow afternoon, in local time: soonest first, one row per wake minute, tonight's gone once it's past.
 function presets(now) {
   const d = new Date(now), at = (days, h) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, h).getTime();
   const time = (ms) => { const w = new Date(ms); return `${w.getHours() % 12 || 12}:${String(w.getMinutes()).padStart(2, "0")} ${w.getHours() < 12 ? "am" : "pm"}`; };
   const day = (ms) => `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(ms).getDay()]} ${time(ms)}`;
   const inFrom = (hours) => { const ms = now + hours * 3600000; return { label: `In ${hours} hour${hours === 1 ? "" : "s"}`, at: ms, hours, when: new Date(ms).getDate() === d.getDate() ? time(ms) : day(ms) }; };
   const monday = at((1 - d.getDay() + 7) % 7 || 7, 9);
-  return [inFrom(1), inFrom(3), { label: "This evening", at: at(0, 18), when: time(at(0, 18)) }, { label: "Tomorrow", at: at(1, 9), when: time(at(1, 9)) }, { label: "Next week", at: monday, when: day(monday) }]
+  return [inFrom(1), inFrom(3), { label: "This evening", at: at(0, 18), when: time(at(0, 18)) }, { label: "Tomorrow", at: at(1, 9), when: time(at(1, 9)) },
+    { label: "Tomorrow afternoon", at: at(1, 14), when: time(at(1, 14)) }, { label: "Next week", at: monday, when: day(monday) }]
     .filter((p) => p.at > now).sort((x, y) => x.at - y.at)
     .filter((p, i, xs) => xs.findIndex((q) => Math.floor(q.at / 60000) === Math.floor(p.at / 60000)) === i);
 }
@@ -243,20 +245,31 @@ export function customView(view) {
       .child(button("custom-submit", "Snooze", true, (_e, cx) => { submitCustom(view); cx.notify(); }))));
 }
 
+// Opens a card's snooze menu, from its clock or from the card's right-click menu (t3-menu), which comes in as the keys
+// would: no press, so the flip, and the keyboard in it.
+export function openNapMenu(view, address, cx, focus = true) {
+  view.napMenu = address;
+  view.napAt = -1;
+  // T3's menu fades in: drawn clear once, then let go (Herdr eases only later changes). It closes at once.
+  view.napShown = false;
+  cx.timer.after(16, (cx) => { view.napShown = true; cx.notify(); });
+  // Enter and Space are the Popover's, which would only close it: a binding of ours, deeper in, comes first.
+  // On each open, as win98's menu binds: a reload of keys.json clears the keymap.
+  cx.bind_keys(["enter", "space"].map((keystroke) => ({ keystroke, action: "t3_inbox_snooze_pick", context: "InboxSnoozeMenu" })));
+  if (focus) { view.napRight = null; view.napKeys.focus(); }
+}
+
 export function snoozeButton(view, t, a, { now, offer: napOffer, delay }, pick) {
   const napId = `snooze-${a.address}`;
   const menu = view.napMenu === a.address, zoom = Number(settings()?.zoom) || 1;
   const lit = (id, color) => view.hot === id ? t.foreground : color;
   return tip(view, t, napId, "Snooze agent", Popover.new(`snooze-menu-${a.address}`).anchor(view.napRight - NAP_MENU_W >= NAP_MENU_MARGIN ? "top_right" : "top_left").open(menu).track_focus(view.napKeys)
     .on_open_change((open, cx) => {
-      view.napMenu = open ? a.address : null;
-      if (!open) view.napRight = null;
-      view.napAt = -1;
-      // T3's menu fades in: drawn clear once, then let go (Herdr eases only later changes). It closes at once.
-      if (open) { view.napShown = false; cx.timer.after(16, (cx) => { view.napShown = true; cx.notify(); }); }
-      // Enter and Space are the Popover's, which would only close it: a binding of ours, deeper in, comes first.
-      // On each open, as win98's menu binds: a reload of keys.json clears the keymap.
-      if (open) cx.bind_keys(["enter", "space"].map((keystroke) => ({ keystroke, action: "t3_inbox_snooze_pick", context: "InboxSnoozeMenu" })));
+      if (open) openNapMenu(view, a.address, cx, false);
+      else {
+        view.napMenu = view.napRight = null;
+        view.napAt = -1;
+      }
       cx.notify();
     })
     .trigger(h_flex().id(napId).h(20).px(6).flex_none().items_center().justify_center().rounded(6)

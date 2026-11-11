@@ -77,9 +77,9 @@ export function inboxRowView(view, t, model, actions, drag) {
     // As T3's sidebar, a card says nothing of its sub-agents: its state takes theirs in (tree.js).
     const meta = branch ?? "";
     const pic = programIcon(a.program, 14, t.muted);
-    // Snooze is offered for anything not needing the person, working too, as T3's. A failed turn counts as needing them
-    // here, and a mod pane has no terminal to hold the label.
-    const canNap = !ghost && !a.mod && st !== "blocked", menu = canNap && view.napMenu === a.address;
+    // Snooze is offered for any card, working too, as T3's, and one that needs the person, through that need. A mod pane
+    // has no terminal to hold the label.
+    const canNap = !ghost && !a.mod, menu = canNap && view.napMenu === a.address;
     // The pointer or keys going into its menu leave the card, but it stays as it was: the menu hangs from the clock, and
     // Settle going would pull the clock, and the menu with it, out from under the pointer.
     const over = !dragging && !view.sweep?.moved && (menu || view.hovered === a.address || within(view, [`card-${a.address}`, `settle-${a.address}`, `snooze-${a.address}`, `woke-${a.address}`]));

@@ -2,6 +2,12 @@
 
 English · [中文](CHANGELOG.zh-CN.md)
 
+## 2026-11-11
+
+- Snooze: a card that needs you can be snoozed too, from its clock or its right-click menu. It stays on the Snoozed shelf through that need, a failed turn included, until it wakes; once the need is over, the next one shows it early again. It used to have no clock.
+- An Inbox card's right-click menu has `Snooze…`, which opens the card's snooze menu.
+- The snooze menu adds Tomorrow afternoon (2:00 pm).
+
 ## 2026-11-09
 
 - Settings → Look: Herdr T3's layout card shows what the layout is for. One card that needs you is lit, the rest sit folded in Working. The old picture was the whole window shrunk until it read as noise.

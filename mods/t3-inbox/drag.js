@@ -114,12 +114,13 @@ export function inboxDrag(view, t, model, actions) {
       if (a.mod || sectionOf(a) === "working" || view.pending.settled[a.address] !== undefined || view.pending.snoozed[a.address] !== undefined || view.hot === `snooze-${a.address}`) return;
       view.drag = { from: a.address, at: e.position, grab: (e.local_position?.y ?? 0) / zoom, height: (e.bounds?.height ?? 0) / zoom, moved: false, target: null };
     })
-    // Its menu: Mark unread when it's idle, Settle unless it needs the person or is settled, then its space's items
-    // (Rename, Labels…); docked alone, the shipped space menu.
+    // Its menu: Mark unread when it's idle, Settle unless it needs the person or is settled, Snooze… on a card, then its
+    // space's items (Rename, Labels…); docked alone, the shipped space menu.
     .on_mouse_down("right", () => {
       if (!a.space) return;
       const unread = !a.mod && model.state(a) === "idle", settle = !a.mod && !model.settledAt(a) && model.state(a) !== "blocked";
-      if (props()?.home) openOverlay({ mod: "t3-menu", kind: "popup", width: 220, height: 320, props: { tab: "agent", target: { address: a.address, space: a.space, unread, settle } } });
+      const snooze = !a.mod && !model.settledAt(a) && !model.hidden(a);
+      if (props()?.home) openOverlay({ mod: "t3-menu", kind: "popup", width: 220, height: 320, props: { tab: "agent", target: { address: a.address, space: a.space, unread, settle, snooze } } });
       else openOverlay({ mod: "menu", kind: "popup", width: 220, height: 260, props: { tab: "space", target: { id: a.space } } });
     })
     .on_mouse_move((e, cx) => {

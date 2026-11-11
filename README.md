@@ -16,7 +16,14 @@ Right-click an Inbox card for its menu:
 
 - **Settle** works while the agent is still working. It stays settled through that run and the turn it ends, unless it needs you; the turn after brings it back.
 - **Mark unread** puts an idle agent back to Done, and brings it back if it was settled.
+- **Snooze…** opens the card's snooze menu under its clock.
 - The space's own items (Rename space, Labels…, worktrees, Close space) follow.
+
+### Snooze what needs you
+
+- A **Needs you** card can be snoozed too, from its clock or its right-click menu. It stays on the Snoozed shelf through that need, a failed turn included, until it wakes.
+- Once that need is over (answered elsewhere, or recovered), the next one shows it early again, as with any snooze.
+- The snooze menu adds **Tomorrow afternoon** (2:00 pm).
 
 ### Labels
 

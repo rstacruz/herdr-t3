@@ -1297,7 +1297,7 @@ test("a hovered row that leaves the list (to the folded Working shelf) and comes
   assert.equal(find(f.tree, "settle-A").handlers.on_click, undefined, "no Settle offer either");
 });
 
-test("the snooze menu is T3's: soonest first, one row per wake minute, tonight gone once past", () => {
+test("the snooze menu is T3's, plus tomorrow afternoon: soonest first, one row per wake minute, tonight gone once past", () => {
   const f = fixture(); f.add("A", "working"); f.mod.workOpen = true; f.mod.hovered = "A";
   const at = (day, h, m = 0) => new Date(2026, 10, day, h, m).getTime();
   const offered = (now) => {
@@ -1305,11 +1305,11 @@ test("the snooze menu is T3's: soonest first, one row per wake minute, tonight g
     const panel = find(f.tree, "snooze-panel-A");
     return panel.items.filter((row) => row.key && !texts(row).includes("Custom…")).map((row) => texts(row).join(" "));
   };
-  assert.deepEqual(offered(at(3, 10)), ["In 1 hour 11:00 am", "In 3 hours 1:00 pm", "This evening 6:00 pm", "Tomorrow 9:00 am", "Next week Mon 9:00 am"]);
-  assert.deepEqual(offered(at(3, 15)), ["In 1 hour 4:00 pm", "In 3 hours 6:00 pm", "Tomorrow 9:00 am", "Next week Mon 9:00 am"], "6 pm from either shows once");
-  assert.deepEqual(offered(at(3, 19)), ["In 1 hour 8:00 pm", "In 3 hours 10:00 pm", "Tomorrow 9:00 am", "Next week Mon 9:00 am"], "tonight's past");
-  assert.deepEqual(offered(at(3, 22)), ["In 1 hour 11:00 pm", "In 3 hours Wed 1:00 am", "Tomorrow 9:00 am", "Next week Mon 9:00 am"], "another day names it");
-  assert.deepEqual(offered(at(8, 10)).slice(-1), ["Tomorrow 9:00 am"], "on a Sunday next week is tomorrow");
+  assert.deepEqual(offered(at(3, 10)), ["In 1 hour 11:00 am", "In 3 hours 1:00 pm", "This evening 6:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"]);
+  assert.deepEqual(offered(at(3, 15)), ["In 1 hour 4:00 pm", "In 3 hours 6:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"], "6 pm from either shows once");
+  assert.deepEqual(offered(at(3, 19)), ["In 1 hour 8:00 pm", "In 3 hours 10:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"], "tonight's past");
+  assert.deepEqual(offered(at(3, 22)), ["In 1 hour 11:00 pm", "In 3 hours Wed 1:00 am", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"], "another day names it");
+  assert.deepEqual(offered(at(8, 10)).slice(-2), ["Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm"], "on a Sunday next week is tomorrow");
   f.render(at(3, 10));
   for (let i = 0; i < 4; i++) f.event("snooze-panel-A", "on_key_down", { key: "down" });
   f.event("snooze-panel-A", "on_action:t3_inbox_snooze_pick"); f.flush();
@@ -1447,10 +1447,8 @@ test("clicking Woke dismisses it, leaving the card alone", () => {
 });
 
 test("a snoozed agent shows while it needs the person; a failure ends the snooze", () => {
-  const f = fixture(), a = f.add("A", "blocked"); f.mod.napOpen = true;
-  f.mod.hovered = "A"; f.render();
-  assert.equal(find(f.tree, "snooze-A"), null, "needing the person, it can't be snoozed");
-  a.status = "working"; f.label("A", "snoozed", String(3600000)); f.render(2000);
+  const f = fixture(), a = f.add("A", "working"); f.mod.napOpen = true;
+  f.label("A", "snoozed", String(3600000)); f.render(2000);
   assert.deepEqual(f.napping(), ["A"]);
   a.status = "blocked"; f.render(3000);
   assert.deepEqual([f.active(), f.napping()], [["A"], []]);
@@ -1461,6 +1459,22 @@ test("a snoozed agent shows while it needs the person; a failure ends the snooze
   a.status = "done"; f.terms[0].status = "error"; f.render(5000); f.flush();
   assert.deepEqual(f.labelled, ["label A snoozed="]);
   assert.deepEqual(f.active(), ["A"]);
+});
+
+test("snoozed while it needs the person, it stays hidden through that need, a failure too; the next need shows it", () => {
+  const f = fixture(), a = f.add("A", "blocked"); f.mod.napOpen = true; f.mod.workOpen = true;
+  f.render(); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
+  f.event("snooze-0-A", "on_click"); f.flush();
+  const until = 1000 + 3600000;
+  assert.deepEqual(f.labelled, [`label A snoozed=${until}:held`]);
+  f.render(2000);
+  assert.deepEqual([f.active(), f.napping()], [[], ["A"]]);
+  f.terms[0].status = "error"; f.render(3000); f.flush();
+  assert.deepEqual([f.labelled.length, f.napping()], [1, ["A"]], "its failure was put off too");
+  f.terms[0].status = a.status = "working"; f.render(4000); f.flush();
+  assert.deepEqual([f.labelled.at(-1), f.napping()], [`label A snoozed=${until}`, ["A"]], "the need over, the mark goes");
+  f.terms[0].status = a.status = "blocked"; f.render(5000);
+  assert.deepEqual([f.active(), f.napping()], [["A"], []], "a new need shows it again");
 });
 
 test("an open menu holds keyboard mode only while the keyboard's in it", () => {
@@ -1474,14 +1488,6 @@ test("an open menu holds keyboard mode only while the keyboard's in it", () => {
   assert.equal(Boolean(f.mod.fs.hold()), true, "typing in the space filter holds it");
   f.mod.search.heard.blur({}, f.cx);
   assert.equal(Boolean(f.mod.fs.hold()), false, "the filter left open, the keyboard gone: no hold");
-});
-
-test("an open menu closes when its card comes to need the person", () => {
-  const f = fixture(), a = f.add("A", "working"); f.mod.workOpen = true; f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
-  a.status = "blocked"; f.render(2000);
-  assert.equal(f.mod.napMenu, null);
-  a.status = "working"; f.render(3000);
-  assert.equal(find(f.tree, "snooze-panel-A"), null);
 });
 
 test("Wake, pinning and Settle end a snooze; a pinned agent snoozes and keeps its pin", () => {
@@ -1804,7 +1810,7 @@ test("the snooze menu lights nothing until the pointer or a key gets there, and 
   assert.equal(lit(), -1, "the pointer leaving takes the light with it");
 });
 
-test("Custom… opens the dialog; its answer snoozes as a preset does, with its Undo, unless the agent came to need the person", () => {
+test("Custom… opens the dialog; its answer snoozes as a preset does, with its Undo, held if the agent came to need the person", () => {
   const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.render(); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
   const panel = find(f.tree, "snooze-panel-A").items, i = panel.filter((r) => r.key).findIndex((r) => texts(r).includes("Custom…"));
   assert.equal(panel.filter((r) => r.key).length - 1, i, "last, under a separator");
@@ -1817,7 +1823,8 @@ test("Custom… opens the dialog; its answer snoozes as a preset does, with its 
   assert.equal(f.mod.notice.action, "Snoozed");
   f.labelled.length = 0; f.mod.pending.snoozed = {}; a.status = "blocked"; f.render(2000);
   f.mod.customSnooze("A:9000000", f.cx); f.flush();
-  assert.deepEqual(f.labelled, []);
+  assert.deepEqual(f.labelled, ["label A snoozed=9000000:held"]);
+  f.labelled.length = 0;
   // A machine's address has its own separators.
   f.add("m.1/a:b", "idle", 100); f.render(2100);
   f.mod.customSnooze("m.1/a:b:9000000", f.cx); f.flush();
