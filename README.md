@@ -41,6 +41,7 @@ Give spaces labels, and filter by them.
 ### More additional features
 
 - `alt-pageup` / `alt-pagedown` switch to the previous / next space.
+- The Working shelf's agents are slim rows, as Snoozed's: the name, then a spinner and how long it's been at it. Hover for the snooze clock.
 - The snooze menu adds **This afternoon** (3:00 pm, before This evening) and **Tomorrow afternoon** (3:00 pm).
 
 ## Credits and license

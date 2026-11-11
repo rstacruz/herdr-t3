@@ -4,6 +4,7 @@ English · [中文](CHANGELOG.zh-CN.md)
 
 ## 2026-11-12
 
+- Inbox: the Working shelf's agents are slim rows, as Snoozed's: the space's mark, the name, and a spinner with how long the run has gone. Hover one for its snooze clock and details. They used to be full cards.
 - The snooze menu adds This afternoon (3:00 pm), before This evening, until it's past. Tomorrow afternoon wakes at 3:00 pm too; it used to be 2:00 pm.
 
 ## 2026-11-11

@@ -4,6 +4,7 @@
 
 ## 2026-11-12
 
+- Inbox：Working 收纳区的 agent 改为窄行，和 Snoozed 一样：space 标记、名字，以及转圈和这一轮已跑了多久。悬停显示 Snooze 时钟和详情。以前是完整的卡片。
 - Snooze 菜单新增 This afternoon（下午 3:00），排在 This evening 之前，过点消失。Tomorrow afternoon 也改为下午 3:00，以前是 2:00。
 
 ## 2026-11-11
