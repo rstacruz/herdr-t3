@@ -3,7 +3,7 @@ import { v_flex, h_flex, Popover, Input } from "gpui-base";
 import { spaces, machines, shared, run, props, openOverlay } from "herdr";
 import { projectMark } from "./project.js";
 import { glow, tip } from "./tip.js";
-import { stop, pressed, justClosed } from "./focus.js";
+import { stop, pressed, justClosed, within } from "./focus.js";
 import { step, scrollList } from "./list.js";
 import { FIRST } from "./row-model.js";
 
@@ -95,7 +95,10 @@ export function inboxTop(view, t, model) {
           draw: (i) => choice(found[i], i), wheeled: (keep) => { view.scopeAt = keep; } })))
         .when(found.length === 0, (el) => el.child(div().p(8).text_center().line_height("20px").text_color(t.dim).child("No matching spaces.")))));
   // T3's top group: 8 in and the search field 4 before its buttons, which touch. The right edge is the brand bar's above, so the two rows of icons line up.
+  // The filter, New space and New tab show only with the pointer on this row, the keyboard on one of them, the filter's menu open, or a filter set.
+  const toolsShown = view.topHover || view.scopeOpen || scoped.length > 0 || within(view, ["inbox-scope", "inbox-new-space", "inbox-new-tab"]);
   const top = h_flex().id("inbox-top").h(32).px(8).gap(4).flex_none().items_center()
+    .on_hover((hovered, cx) => { view.topHover = hovered; cx.notify(); })
     // Sized as T3's search field (h-8, 16px icon, a medium 14px placeholder), but a button: it opens Go to.
     .child(stop(view, t, "inbox-search", h_flex().id("inbox-search").flex_1().h(32).px(8).gap(8).items_center().rounded(6).text_size(14).font_medium()
       .text_color(lit("inbox-search", t.dim)).hover((s) => s.bg(t.hover)).on_hover(glow(view, "inbox-search")).on_mouse_down("left", () => pressed(view))
@@ -103,7 +106,7 @@ export function inboxTop(view, t, model) {
       .role("button").accessibility_label("Search").on_click((_e, cx) => { view.hot = null; const picker = props()?.picker ?? "picker"; if (!justClosed(view, `${picker}.closed`)) run("mod.open", { name: picker }); cx.notify(); })
       .child(svg("mods/t3-inbox/icons/search.svg").size(16).flex_none().text_color(lit("inbox-search", t.dim)))
       .child(div().child("Search"))))
-    .child(h_flex().flex_none().items_center()
+    .child(h_flex().flex_none().items_center().opacity(toolsShown ? 1 : 0).transition("opacity", { duration: 150, easing: "ease-out" })
     .child(tip(view, t, "inbox-scope", "Filter by space", filter, { off: view.scopeOpen, hint: "Shift+click to pick several", below: true }))
     .child(tool("inbox-new-space", "New space", "folder-plus", (_e, cx) => {
       view.hot = null;
