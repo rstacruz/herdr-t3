@@ -11,13 +11,14 @@
 
 import { View } from "gpui-kit";
 import { v_flex, InputState } from "gpui-base";
-import { agents, terminals, panes, spaces, focused, hc, notify, theme, shared, setShared, setAgentOrder, props, nextCommand, settings, layout, window } from "herdr";
+import { agents, terminals, panes, spaces, machines, focused, hc, notify, theme, shared, setShared, setAgentOrder, props, nextCommand, settings, layout, window } from "herdr";
 import { modStatus, programOf } from "./name.js";
 import { descendants, ownStatus, stillSettled } from "./tree.js";
 import { stopsInit, stopsEnd, focusRoot, enter } from "./focus.js";
 import { FIRST, trackInboxRows, inboxInView, inboxFields, inboxSections } from "./row-model.js";
 import { DAY, initCustom, customView } from "./snooze.js";
 import { inboxMatches, pickInboxSpace } from "./filter.js";
+import { labelsOf, knownLabels, loadLabels } from "./labels.js";
 import { inboxActions } from "./actions.js";
 import { inboxDrag } from "./drag.js";
 import { inboxRowView } from "./row-view.js";
@@ -58,11 +59,12 @@ export default class Inbox extends View {
     this.hovered = null;
     // Each row's drawn height (logical px, by `kind:address`), for where rows sit when the list moves.
     this.rowH = {};
-    // The spaces shown, as T3 scopes threads to projects; none: all of them.
+    // The spaces shown, as T3 scopes threads to projects, and the space labels shown (any space with one); none of either: all of them.
     this.scope = JSON.parse(localStorage.getItem("scope") ?? "[]");
+    this.labelScope = JSON.parse(localStorage.getItem("labelScope") ?? "[]");
     this.scopeOpen = false;
     this.scopeAt = 0;
-    this.search = InputState.new({ placeholder: "Search spaces…" });
+    this.search = InputState.new({ placeholder: "Search spaces and labels…" });
     this.search.on("change", (_e, cx) => { this.scopeAt = 0; cx.notify(); });
     this.search.on("submit", (_e, cx) => this.pick(this.matches()[this.scopeAt], false, cx));
     // An input can't be asked whether it has the keyboard.
@@ -85,14 +87,22 @@ export default class Inbox extends View {
       for (;;) {
         const command = await nextCommand();
         if (command === "settle") /** @type {any} */ (this).settleKey?.(cx);
+        // `t3-inbox.settle:<address>`: Settle from a card's menu (t3-menu), working agents too.
+        else if (command.startsWith("settle:")) /** @type {any} */ (this).settleAgent?.(command.slice("settle:".length), cx);
         else if (command === "clear") /** @type {any} */ (this).clearSettled?.();
         else if (command.startsWith("custom-snooze:")) /** @type {any} */ (this).customSnooze?.(command.slice("custom-snooze:".length), cx);
+        // `t3-inbox.unread:<address>`: Mark unread, from a card's menu (t3-menu).
+        else if (command.startsWith("unread:")) this.markUnread(command.slice("unread:".length), cx);
         else if (command === "undo") this.undo(cx);
         // pane.go onto this list (mod.json's "focusable"): the keyboard starts at Search.
         else if (command === "focus") enter(this, cx, "inbox-search");
         cx.notify();
       }
     });
+    // Space labels, each connected machine's: the Spaces list may never have started to load them.
+    const labels = () => loadLabels([null, ...machines().filter((m) => m.name && m.layout === "ready").map((m) => m.name)]).catch(() => {});
+    cx.spawn(async (cx) => { await labels(); cx.notify(); });
+    cx.timer.every(15000, (cx) => cx.spawn(async (cx) => { await labels(); cx.notify(); }));
   }
 
   matches() { return inboxMatches(this); }
@@ -107,6 +117,25 @@ export default class Inbox extends View {
     for (const key of Object.keys(this.changed)) if (!(key in changes)) delete this.changed[key];
     Object.assign(this.changed, changes);
     localStorage.setItem("changes", JSON.stringify(this.changed));
+  }
+
+  // Back to Done, as if it had just finished: Herdr's own seen marker (`herdr.seen`, the turn last looked at; not in
+  // its documented API) goes one turn back, so every list says Done and Herdr clears it when it's looked at. A settled
+  // one comes back too.
+  markUnread(addr, cx) {
+    const { every, term, state, settledAt } = this.compute(cx, false);
+    const a = every.find((x) => x.address === addr), turn = term.get(addr)?.turn ?? 0;
+    if (!a || a.mod || state(a) !== "idle" || turn < 1) return;
+    if (settledAt(a)) {
+      this.setLabel("settled", addr, "", cx);
+      this.changed[addr] = { ...this.changed[addr], at: Date.now(), start: null };
+      localStorage.setItem("changes", JSON.stringify(this.changed));
+    }
+    cx.spawn(async (cx) => {
+      const r = await hc(["label", addr, `herdr.seen=${turn - 1}`]).catch((e) => ({ code: 1, stderr: String(e) }));
+      if (r.code !== 0) notify({ title: "Couldn't mark it unread", body: r.stderr.trim(), level: "error" });
+      cx.notify();
+    });
   }
 
   // Shown at once; the label comes back from the core a moment later.
@@ -202,14 +231,25 @@ export default class Inbox extends View {
     // As T3's route reveal: an agent brought into view from elsewhere (a key, the picker, its pane) that the space
     // filter hides widens the filter to every space, kept. Not on the first draw, and a filter you pick isn't undone.
     // Only while the Inbox is the mode (or docked alone): moving about in Lists isn't bringing a card into view.
+    // A space that's gone reads as all, as does a label no space has; both stay stored, so the scope returns with them.
+    const scoped = () => {
+      const scope = this.scope.filter((id) => sp.some((s) => s.id === id));
+      const known = knownLabels(sp), labels = this.labelScope.filter((l) => known.includes(l));
+      const labelled = sp.filter((s) => labels.some((l) => labelsOf(s).includes(l))).map((s) => s.id);
+      return { scope, labels, within: [...new Set([...scope, ...labelled])] };
+    };
+    let { scope, labels, within } = scoped();
     const { stack } = sidebarParts(layout());
-    if ((!stack || stack.active === "inbox") && this.inView !== undefined && inView && inView !== this.inView && this.scope.length) {
+    if ((!stack || stack.active === "inbox") && this.inView !== undefined && inView && inView !== this.inView && within.length) {
       const a = every.find((x) => x.address === inView);
-      if (a && !this.scope.includes(a.space)) { this.scope = []; localStorage.setItem("scope", "[]"); this.limit = FIRST; }
+      if (a && !within.includes(a.space)) {
+        this.scope = []; this.labelScope = [];
+        localStorage.setItem("scope", "[]"); localStorage.setItem("labelScope", "[]");
+        this.limit = FIRST;
+        ({ scope, labels, within } = scoped());
+      }
     }
     this.inView = inView;
-    // A space that's gone reads as all; its id stays stored, so the scope returns with it.
-    const scope = this.scope.filter((id) => sp.some((s) => s.id === id));
     const term = new Map(all.map((k) => [k.address, k]));
     // The key reports an explicit return; a label cleared by Undo, even in another window, keeps its place.
     const unsettled = shared("t3-inbox.unsettled") ?? {};
@@ -251,7 +291,7 @@ export default class Inbox extends View {
     })), all, now, cx);
     const sections = inboxSections(every.map((a) => ({ a, address: a.address, settledAt: settledAt(a), hidden: hidden(a),
       working: working(a), viewing: viewing(a), since: since(a), begun: begun(a), napUntil: napUntil(a) })),
-      { scope, pins, workOpen: this.workOpen, napOpen: this.napOpen, open: this.open, limit: this.limit });
+      { scope: within, pins, workOpen: this.workOpen, napOpen: this.napOpen, open: this.open, limit: this.limit });
     const { pinned, out, work, nap, put, busyRows, napRows, rows, next } = sections;
     // A menu whose card went (snoozed, gone) or now needs the person closes, as T3's.
     if (this.napMenu && ![...pinned, ...out, ...busyRows].some((a) => a.address === this.napMenu && state(a) !== "blocked")) this.napMenu = null;
@@ -263,7 +303,7 @@ export default class Inbox extends View {
     }
     if (publish) this.publishRows([...pinned, ...out, ...busyRows, ...napRows, ...rows], inView,
       [...pinned, ...out, ...work, ...nap, ...put]);
-    return { now, all, ps, sp, f, every, inView, scope, term, pins, wake, ...fields, ...sections };
+    return { now, all, ps, sp, f, every, inView, scope, labels, term, pins, wake, ...fields, ...sections };
   }
 
   publishRows(rows, view, ordered = rows) {

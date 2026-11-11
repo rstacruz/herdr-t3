@@ -1,7 +1,8 @@
 // Context menus (Herdr's items). Opened as a popup with
-// props { tab: "pane" | "tab" | "space" | "global", target }.
+// props { tab: "pane" | "tab" | "space" | "agent" | "global", target }; an agent's (the Inbox's cards) is
+// { address, space, unread, settle }: Mark unread and Settle when offered, then its space's items.
 // ↑/↓, Home, End and typeahead move, Enter runs, Esc closes. An item is [label, command, args];
-// a command "worktree" opens the worktree dialog instead.
+// a command "worktree" opens the worktree dialog instead, "labels" the t3-labels dialog, and "unread" and "settle" go to the Inbox.
 // t3-menu: Herdr's menu (mod.clone), with a tab's and a pane's Close going through the tab bar (t3-tabs), which asks first
 // while a program runs and leaves first, so Herdr's pick of a neighbour never shows. Only choose(), T3's measures, the list's moves
 // (shared/list.js, the one way every popup's list moves) and a pane's Copy address differ from the shipped one.
@@ -73,10 +74,20 @@ function items(p, git) {
     case "space":
       return [
         ["Rename", "space.rename", { id: tg.id }],
+        ["Labels…", "labels", { space: tg.id }],
         ...(git ? [["New worktree", "worktree", { space: tg.id, action: "new" }], ["Open worktree", "worktree", { space: tg.id, action: "open" }]] : []),
         ...(git === "linked" ? [["Remove worktree", "worktree", { space: tg.id, action: "remove" }]] : []),
         ["Close", "space.close", { id: tg.id }],
       ];
+    case "agent": {
+      const space = items({ tab: "space", target: { id: tg.space } }, git)
+        .map(([label, command, args]) => [command === "space.rename" ? "Rename space" : command === "space.close" ? "Close space" : label, command, args]);
+      return [
+        ...(tg.unread ? [["Mark unread", "unread", { address: tg.address }]] : []),
+        ...(tg.settle ? [["Settle", "settle", { address: tg.address }]] : []),
+        ...space,
+      ];
+    }
     default:
       return [
         ["New space", "space.new", {}],
@@ -89,8 +100,14 @@ function items(p, git) {
   }
 }
 
+// An agent's own items, divided from its space's.
+const AGENT = ["unread", "settle"];
+
 function menuIcon(command) {
   if (command === "copy") return "mods/t3-menu/icons/copy.svg";
+  if (command === "labels") return "mods/t3-menu/icons/tag.svg";
+  if (command === "unread") return "mods/workspace-chrome/circle-check.svg";
+  if (command === "settle") return "mods/workspace-chrome/archive.svg";
   const name = command.endsWith(".close") ? "x" : command.endsWith(".rename") ? "square-pen" : command.endsWith(".new") ? "plus" : command === "worktree" ? "git-branch" : command === "app.help" ? "terminal" : command === "app.theme" ? "settings" : command === "pane.split" ? "panel-right" : command === "pane.zoom" ? "square" : "terminal";
   return `mods/workspace-chrome/${name}.svg`;
 }
@@ -111,7 +128,7 @@ export default class Menu extends View {
     this.handle = cx.focus_handle();
     this.handle.focus();
     const p = props();
-    const space = p?.tab === "space" && spaces().find((s) => s.id === p.target?.id);
+    const space = spaces().find((s) => s.id === (p?.tab === "space" ? p.target?.id : p?.tab === "agent" ? p.target?.space : null));
     const folder = space && place(space);
     if (folder)
       cx.spawn(async (cx) => {
@@ -125,6 +142,9 @@ export default class Menu extends View {
     if (!it) return;
     closeOverlay(props()?.overlay);
     if (it[1] === "worktree") openOverlay({ mod: "worktree", kind: "dialog", ...(it[2].action === "open" ? { width: 560, height: 480 } : { width: 440, height: 260 }), props: it[2] });
+    else if (it[1] === "labels") openOverlay({ mod: "t3-labels", kind: "dialog", width: 360, height: 400, props: it[2] });
+    else if (it[1] === "unread") run(`t3-inbox.unread:${it[2].address}`);
+    else if (it[1] === "settle") run(`t3-inbox.settle:${it[2].address}`);
     // The item keeps Herdr's command, for its icon, its divider and its key; only where it goes changes.
     else if (it[1] === "tab.close") run(`t3-tabs.close-tab:${it[2].id}`);
     else if (it[1] === "pane.close") run(`t3-tabs.close-pane:${it[2].pane}`);
@@ -156,7 +176,7 @@ export default class Menu extends View {
       .children(
         list.map((it, i) =>
           v_flex()
-            .when(i > 0 && (it[1].endsWith(".close") || it[1] === "app.help" || (it[1] === "app.theme" && list[i - 1][1] !== "app.theme")), el => el.child(div().mx(8).my(4).h(1).bg(t.border)))
+            .when(i > 0 && (it[1].endsWith(".close") || it[1] === "app.help" || (AGENT.includes(list[i - 1][1]) && !AGENT.includes(it[1])) || (it[1] === "app.theme" && list[i - 1][1] !== "app.theme")), el => el.child(div().mx(8).my(4).h(1).bg(t.border)))
             .child(h_flex()
             .id(`mi-${i}`)
             .h(28)

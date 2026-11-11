@@ -51,7 +51,8 @@ export function inboxActions(view, model) {
     if (before.some((p) => took.includes(p))) setShared("agents.pins", before.filter((p) => !took.includes(p)));
     let undone = false;
     for (const a of kept) {
-      view.setLabel("settled", a.address, `${Date.now()}:${term.get(a.address)?.turn ?? 0}`, cx, () => {
+      // Still at work, it's marked as settled mid-run: that run's end doesn't bring it back (tree.js).
+      view.setLabel("settled", a.address, `${Date.now()}:${term.get(a.address)?.turn ?? 0}${busy(a) ? ":run" : ""}`, cx, () => {
         if (!undone && before.includes(a.address)) repin(before, [a.address]);
       });
       if (naps.get(a)) wake(a, cx);
@@ -105,6 +106,11 @@ export function inboxActions(view, model) {
     if (!a) return;
     if (settledAt(a)) unsettle(a, cx);
     else if (!busy(a)) settle([a], cx);
+  };
+  // Settle from a card's menu (t3-menu): working too, but not while it needs the person.
+  view.settleAgent = (address, cx) => {
+    const a = every.find((x) => x.address === address);
+    if (a && !a.mod && !settledAt(a) && state(a) !== "blocked") settle([a], cx);
   };
 
   // Clear closes settled agents' panes; Herdr then closes emptied tabs. The one in view stays.

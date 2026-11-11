@@ -1867,7 +1867,7 @@ for (const width of [208, 240, 256, 320, 480]) {
     inbox.hot = "inbox-scope";
     fire(find(inbox.render(cx), "tip-over-inbox-scope"), "on_hover", true, cx);
     while (cx.timers.length) { const t = cx.timers.shift(); if (!t.gone) t.fn(cx); }
-    assert.deepEqual(strings(card(inbox, "inbox-scope")), ["Filter by space", "Shift+click to pick several"], "a second line only for what can't be seen");
+    assert.deepEqual(strings(card(inbox, "inbox-scope")), ["Filter by space or label", "Shift+click to pick several"], "a second line only for what can't be seen");
     // A program's icon has no label of its own, as T3's rows.
     f.panes()[0].program = f.agents()[0].program;
     for (const [name, view] of Object.entries({ tabs: f.load("t3-tabs"), inbox, agents: f.load("t3-agents"), pane: f.load("t3-pane", { pane: "p0" }) })) {

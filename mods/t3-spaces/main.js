@@ -1,14 +1,16 @@
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
-// switch, right-click for its menu, drag to reorder.
+// switch, right-click for its menu, drag to reorder. The heading's filter shows only spaces with the labels picked
+// (a space's menu sets them, labels.js keeps them).
 
 import { View, div, svg } from "gpui-kit";
 import { foldArrow, planMotion, flying, leavingRows } from "./motion.js";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Popover } from "gpui-base";
 import { spaces, machines, panes, focused, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, props, layout, nextCommand } from "herdr";
 import { projectMark, tint } from "./project.js";
 import { repoFacts } from "./repos.js";
+import { labelsOf, knownLabels, loadLabels } from "./labels.js";
 import { dragGone, glow, hoverKept, tip, tipMark, POINTER_WATCH, pointerMoved } from "./tip.js";
 import { stopsInit, stopsEnd, stop, focusRoot, enter, pressed, justClosed } from "./focus.js";
 import { sidebarParts } from "./sidebar.js";
@@ -45,6 +47,9 @@ export default class Spaces extends View {
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.foldedRepos = new Set(JSON.parse(localStorage.getItem("repos.folded") ?? "[]"));
+    // The labels the list is filtered to (any of them); none: every space. Kept by name, so a label that comes back filters again.
+    this.labelFilter = new Set(JSON.parse(localStorage.getItem("labels.filter") ?? "[]"));
+    this.labelsOpen = false;
     this.machinesSeen = this.machinesNow();
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
@@ -82,6 +87,8 @@ export default class Spaces extends View {
           if (fixed.length) localStorage.setItem("machines.reconnecting", JSON.stringify(this.reconnecting));
         }
       } catch {}
+      // Each connected machine's labels, as often as its state: another screen may have changed them.
+      await loadLabels([null, ...this.machines.filter((m) => m.state === "connected" && !m.temporary).map((m) => m.name)]).catch(() => {});
       cx.notify();
     });
   }
@@ -210,7 +217,72 @@ export default class Spaces extends View {
       }
       this.ordering.machines = [...moved];
     }
-    return out.filter(r => (r.head || this.shown.has(r.w.id)) && !r.folded && r.w.id !== homeId);
+    return this.byLabel(out.filter(r => (r.head || this.shown.has(r.w.id)) && !r.folded && r.w.id !== homeId));
+  }
+
+  // The picked labels some space still has: a label no space has any more filters nothing.
+  wanted() {
+    const known = new Set(knownLabels(spaces()));
+    return new Set([...this.labelFilter].filter((l) => known.has(l)));
+  }
+
+  // Only the spaces with a picked label; a checkout without one stays over its worktrees that have one.
+  byLabel(rows) {
+    const want = this.wanted();
+    if (!want.size) return rows;
+    const match = (r) => !r.head && labelsOf(r.w).some((l) => want.has(l));
+    const out = [];
+    for (let i = 0; i < rows.length;) {
+      let j = i + 1;
+      while (rows[j]?.tree) j++;
+      const top = rows[i], kids = rows.slice(i + 1, j).filter(match);
+      i = j;
+      if (!match(top) && !kids.length) continue;
+      out.push(top, ...kids.map((k, n) => ({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" })));
+    }
+    return out;
+  }
+
+  // A click shows that label alone (again: every space); shift-click adds or removes it and keeps the menu open.
+  pickLabel(label, shift, cx) {
+    const f = this.labelFilter, only = f.size === 1 && f.has(label);
+    if (label === null) f.clear();
+    else if (shift) f.has(label) ? f.delete(label) : f.add(label);
+    else { f.clear(); if (!only) f.add(label); }
+    localStorage.setItem("labels.filter", JSON.stringify([...f]));
+    if (!shift) this.labelsOpen = false;
+    cx.notify();
+  }
+
+  labelMenu(t) {
+    const sp = spaces(), known = knownLabels(sp), want = this.wanted();
+    const choice = (label, i) => {
+      const on = label === null ? want.size === 0 : want.has(label);
+      const id = `label-pick-${i}`;
+      return h_flex().id(id).h(30).px(8).gap(8).flex_none().items_center().rounded(4).cursor_pointer()
+        .hover((s) => s.bg(t.hover))
+        .role("button").accessibility_label(label ?? "All spaces")
+        .on_click((e, cx) => this.pickLabel(label, e.modifiers.shift, cx))
+        .child(h_flex().size(16).flex_none().items_center().justify_center()
+          .when(on, (el) => el.child(svg("mods/t3-spaces/icons/check.svg").size(14).text_color(t.accent))))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(label ?? "All spaces"))
+        .when(label !== null, (el) => el.child(div().flex_none().text_size(12).text_color(t.dim)
+          .child(String(sp.filter((s) => labelsOf(s).includes(label)).length))));
+    };
+    const names = [...want];
+    const label = names.length ? `Filter by label: ${names.join(", ")}` : "Filter by label";
+    const lit = this.hot === "space-labels" || names.length ? t.foreground : t.dim;
+    return tip(this, t, "space-labels", label, Popover.new("space-labels-menu").anchor("top_right").open(this.labelsOpen)
+      .on_open_change((open, cx) => { this.labelsOpen = open; cx.notify(); })
+      .trigger(stop(this, t, "space-labels", h_flex().id("space-labels").h(28).min_w(28).max_w(120).px(6).gap(4).flex_none()
+        .items_center().justify_center().rounded(8).text_color(lit).hover((s) => s.bg(t.hover)).on_hover(glow(this, "space-labels"))
+        .role("button").accessibility_label(label)
+        .child(svg("mods/t3-spaces/icons/list-filter.svg").size(16).flex_none())
+        .when(names.length > 0, (el) => el.child(div().min_w(0).truncate().text_size(12).child(names.join(", ")))), 8))
+      .content(v_flex().id("space-labels-panel").w(220).mt(4).p(4).rounded(8).gap(1)
+        .bg(t.popover).border_1().border_color(t.border).shadow_lg().text_size(13).font_normal()
+        .children([null, ...known].map(choice))),
+    { off: this.labelsOpen, hint: "Shift+click to pick several", below: true });
   }
 
   toggleRepo(repo, cx) {
@@ -235,7 +307,11 @@ export default class Spaces extends View {
     };
     const loadingRow = m => plain(`machine-loading-${m ?? "local"}`, m, ghost => div().when(!ghost, el => el.id(`machine-loading-${m ?? "local"}`))
       .h(ROW).flex_none().px(10).flex().items_center().text_color(t.dim).child("Loading…"));
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(entry);
+    if (!remote.length) {
+      if (!rows.length && this.wanted().size) return [plain("labels-none", null, ghost => div().when(!ghost, el => el.id("labels-none"))
+        .h(ROW).flex_none().px(10).flex().items_center().text_color(t.dim).child("No spaces with these labels"))];
+      return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(entry);
+    }
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -295,7 +371,7 @@ export default class Spaces extends View {
       // A machine rarely goes, and when it does its heading just goes: no ghost.
       const heading = { key: `machine-${id}`, h: PITCH, m, el: stop(this, t, `machine-${id}`, head) };
       if (rebuilt) return [heading];
-      return [heading, ...(folded ? [] : mine.length ? mine.map(entry) : [loading(m) ? loadingRow(m) : empty])];
+      return [heading, ...(folded ? [] : mine.length ? mine.map(entry) : loading(m) ? [loadingRow(m)] : this.wanted().size ? [] : [empty])];
     });
   }
 
@@ -554,6 +630,8 @@ export default class Spaces extends View {
         .child(div().text_color(t.muted).child("Spaces"))
         // The same two as Inbox's top row, so switching modes moves nothing.
         .child(h_flex().flex_none().items_center()
+          // Only once some space has a label. Left of the two, so they stay where Inbox's are.
+          .when(knownLabels(sp).length > 0, el => el.child(this.labelMenu(t)))
           .child(tool("space-new", "New space", "folder-plus", (_e, cx) => {
             this.hot = null;
             // The layout's menu asks which machine, as its mod.json places it; the shipped one can't, so docked alone it's the active space's.

@@ -13,7 +13,7 @@ export const SLIM = 36, SHELF = 32;
 export const STACK = 1, CARD_GAP = 5, LIST_TOP = 8;
 
 export function inboxList(view, t, model, actions, drag, draw, cx) {
-  const { list, every, sp, scope, kids, working, pinned, out, work, nap, put, busyRows, napRows, busy } = model;
+  const { list, every, sp, scope, labels, kids, working, pinned, out, work, nap, put, busyRows, napRows, busy } = model;
   const { d, dragging, lifted, plan, cardH, rows, hot, aim, gap, others, placeholder, boundary, pinTo } = drag;
   const { card, slim } = draw;
   const { doomed } = actions;
@@ -180,6 +180,7 @@ export function inboxList(view, t, model, actions, drag, draw, cx) {
       // As T3's: only a list with nothing in it says so; Active alone being empty stays blank.
       .when(list.length === 0, (el) => el.child(fly("m:empty", "marker", div().px(8).py(24).text_center().text_size(12).line_height("16px").text_color(t.dim)
         .child(!every.length ? "Nothing here yet. Agents and panes that report a status show up here."
+          : labels.length ? `Nothing in spaces labelled ${labels.join(", ")} yet`
           : scoped.length > 1 ? "Nothing in these spaces yet" : `Nothing in ${scoped[0].name} yet`))))
       // While dragging, Settled shows even empty: it's where a drop settles.
       // The free space above the shelves pushes them to the bottom; a drag over it lands in Active, as T3's

@@ -42,11 +42,16 @@ export function treeStatus(own, kids) {
 
 // A settled agent stays settled until new work: busy now, or a turn ended since. Label removal can still be in flight,
 // or the Inbox not started, so the label alone isn't enough. `k` is its terminal.
+// Settled mid-run (`<ms>:<turn>:run`, from the Inbox's card menu), it stays settled through that run and the turn it
+// ends, unless it needs the person; the turn after brings it back.
 export function stillSettled(k, word, kids) {
   const label = k?.labels?.settled;
   if (!label) return false;
-  const busy = (s) => s === "working" || s === "blocked";
-  return !busy(word) && !kids.some(busy) && (k.turn ?? 0) <= Number(label.split(":")[1]);
+  const [, at, run] = label.split(":"), turn = k.turn ?? 0;
+  const stuck = (s) => s === "blocked" || s === "error";
+  if (run) return !stuck(word) && !kids.some(stuck) && turn <= Number(at) + 1;
+  const busy = (s) => s === "working" || stuck(s);
+  return !busy(word) && !kids.some(busy) && turn <= Number(at);
 }
 
 // Settled or snoozed (until it wakes) isn't news in either sidebar.

@@ -1,6 +1,7 @@
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Popover, Input } from "gpui-base";
 import { spaces, machines, shared, run, props, openOverlay } from "herdr";
+import { labelsOf, knownLabels } from "./labels.js";
 import { projectMark } from "./project.js";
 import { glow, tip } from "./tip.js";
 import { stop, pressed, justClosed, within } from "./focus.js";
@@ -10,16 +11,27 @@ import { FIRST } from "./row-model.js";
 // The space filter's rows, flush as T3's, and how many show before the list scrolls: the whole rows T3's 23rem holds.
 const SCOPE_ROW = 32, SCOPE_SHOWN = 9;
 
+// All spaces, then the space labels (each space with one), then the spaces.
 export function inboxMatches(view) {
-  const q = view.search.value().toLowerCase();
-  return [{ id: null, name: "All spaces" }, ...spaces().filter((s) => s.id !== shared("t3-home.space"))].filter((s) => s.name.toLowerCase().includes(q));
+  const q = view.search.value().toLowerCase(), sp = spaces();
+  return [{ id: null, name: "All spaces" }, ...knownLabels(sp).map((l) => ({ label: l, name: l })), ...sp.filter((s) => s.id !== shared("t3-home.space"))]
+    .filter((s) => s.name.toLowerCase().includes(q));
 }
 
-// A click shows that space alone; shift-click adds or removes it and keeps the menu open, as in T3.
+// A click shows that space or label alone (the one label alone again: all); shift-click adds or removes it and keeps the
+// menu open, as in T3. Spaces and labels add up: a card shows when its space is picked or has a picked label.
 export function pickInboxSpace(view, s, shift, cx) {
   if (!s) return;
-  view.scope = !s.id ? [] : !shift ? [s.id] : view.scope.includes(s.id) ? view.scope.filter((id) => id !== s.id) : [...view.scope, s.id];
+  const flip = (xs, x) => xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x];
+  if (s.label) {
+    const alone = view.labelScope.length === 1 && view.labelScope[0] === s.label && !view.scope.length;
+    if (shift) view.labelScope = flip(view.labelScope, s.label);
+    else { view.scope = []; view.labelScope = alone ? [] : [s.label]; }
+  } else if (!s.id) { view.scope = []; view.labelScope = []; }
+  else if (shift) view.scope = flip(view.scope, s.id);
+  else { view.scope = [s.id]; view.labelScope = []; }
   localStorage.setItem("scope", JSON.stringify(view.scope));
+  localStorage.setItem("labelScope", JSON.stringify(view.labelScope));
   // A new scope starts the settled tail over, as T3's does.
   view.limit = FIRST;
   if (!shift) view.scopeOpen = false;
@@ -27,7 +39,7 @@ export function pickInboxSpace(view, s, shift, cx) {
 }
 
 export function inboxTop(view, t, model) {
-  const { sp, ps, scope } = model;
+  const { sp, ps, scope, labels } = model;
   const lit = (id, color) => view.hot === id ? t.foreground : color;
   // A space's mark, as t3-spaces draws it.
   const avatar = (id, name, size) => projectMark(sp.find((s) => s.id === id) ?? { name: name ?? "" }, size, t, ps);
@@ -37,23 +49,28 @@ export function inboxTop(view, t, model) {
     .hover((s) => s.bg(t.hover)).on_hover(glow(view, id)).on_mouse_down("left", () => pressed(view))
     .role("button").accessibility_label(label).on_click(fn)
     .child(svg(`mods/t3-inbox/icons/${icon}.svg`).size(16).text_color(lit(id, t.dim))), 8), more);
-  // The filter shows what it filters to: one avatar, two overlapping, or the plain filter icon.
+  // The filter shows what it filters to: the labels picked, else one avatar, two overlapping, or the plain filter icon.
   const scoped = sp.filter((s) => scope.includes(s.id)), found = view.matches();
   const choice = (s, i) => {
-    const on = s.id ? scope.includes(s.id) : scope.length === 0;
+    const on = s.label ? labels.includes(s.label) : s.id ? scope.includes(s.id) : scope.length === 0 && labels.length === 0;
+    const mine = s.id ? labelsOf(s) : [];
     // Selection is a check badge on the icon, as in T3.
-    return h_flex().id(`scope-${s.id ?? "all"}`).h(SCOPE_ROW).px(8).gap(8).flex_none().items_center().rounded(4)
+    return h_flex().id(s.label ? `scope-label-${s.label}` : `scope-${s.id ?? "all"}`).h(SCOPE_ROW).px(8).gap(8).flex_none().items_center().rounded(4)
       .when(i === view.scopeAt, (el) => el.bg(t.selected))
       .on_hover((over, cx) => { if (over && view.scopeAt !== i) { view.scopeAt = i; cx.notify(); } })
-      .role("button").accessibility_label(s.name)
+      .role("button").accessibility_label(s.label ? `Label ${s.name}` : s.name)
       .on_click((e, cx) => view.pick(s, e.modifiers.shift, cx))
       .child(div().relative().flex_none()
-        .child(s.id ? avatar(s.id, s.name, 16) : svg("mods/t3-inbox/icons/folder.svg").size(16).text_color(t.muted))
+        .child(s.id ? avatar(s.id, s.name, 16) : svg(`mods/t3-inbox/icons/${s.label ? "tag" : "folder"}.svg`).size(16).text_color(t.muted))
         // T3's ring is outside its 12px badge; a border here is inside, so 16 and 2 further out.
         .when(on, (el) => el.child(h_flex().absolute().right(-6).bottom(-6).size(16).rounded_full().bg(t.accent)
           .border(2).border_color(t.popover).items_center().justify_center()
           .child(svg("mods/t3-inbox/icons/check.svg").size(8).text_color("#ffffff")))))
-      .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(s.name));
+      .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(s.name))
+      // A label's count of spaces; a space's labels.
+      .when(Boolean(s.label), (el) => el.child(div().flex_none().text_size(12).text_color(t.dim)
+        .child(String(sp.filter((x) => labelsOf(x).includes(s.label)).length))))
+      .when(mine.length > 0, (el) => el.child(div().flex_none().max_w(110).truncate().text_size(12).text_color(t.dim).child(mine.join(", "))));
   };
   // As T3's: from the button's left edge, 288 wide, out over the work column; radius 8 and rows' 4, inset 4 (its rounded-lg, rounded-sm, px-1).
   const filter = Popover.new("inbox-scope-menu").anchor("top_left").open(view.scopeOpen)
@@ -66,10 +83,14 @@ export function inboxTop(view, t, model) {
       }
       cx.notify();
     })
-    .trigger(stop(view, t, "inbox-scope", h_flex().id("inbox-scope").size(28).flex_none().items_center().justify_center().rounded(8)
+    .trigger(stop(view, t, "inbox-scope", h_flex().id("inbox-scope").h(28).min_w(28).flex_none().items_center().justify_center().rounded(8)
       .hover((s) => s.bg(t.hover)).on_hover(glow(view, "inbox-scope"))
-      .role("button").accessibility_label(scoped.length ? `Filter by space: ${scoped.map((s) => s.name).join(", ")}` : "Filter by space")
-      .child(scoped.length > 1
+      .role("button").accessibility_label(labels.length || scoped.length ? `Filter by space: ${[...labels, ...scoped.map((s) => s.name)].join(", ")}` : "Filter by space")
+      .child(labels.length
+        ? h_flex().max_w(110).px(6).gap(4).items_center().text_size(12).text_color(t.foreground)
+          .child(svg("mods/t3-inbox/icons/tag.svg").size(14).flex_none())
+          .child(div().min_w(0).truncate().child(scoped.length ? `${labels.join(", ")} +${scoped.length}` : labels.join(", ")))
+        : scoped.length > 1
         // T3's second mark overlaps by 4 with a 2px ring of the sidebar's color.
         ? h_flex().children(scoped.slice(0, 2).map((s, i) => i === 0 ? avatar(s.id, s.name, 14)
           : h_flex().flex_none().ml(-6).rounded(6).border(2).border_color(t.chrome).child(avatar(s.id, s.name, 14))))
@@ -93,10 +114,10 @@ export function inboxTop(view, t, model) {
       .child(div().pt(5).flex_none()
         .when(found.length > 0, (el) => el.child(scrollList(view, "inbox-scope-list", { count: found.length, row: SCOPE_ROW, at: view.scopeAt, height: Math.min(found.length, SCOPE_SHOWN) * SCOPE_ROW,
           draw: (i) => choice(found[i], i), wheeled: (keep) => { view.scopeAt = keep; } })))
-        .when(found.length === 0, (el) => el.child(div().p(8).text_center().line_height("20px").text_color(t.dim).child("No matching spaces.")))));
+        .when(found.length === 0, (el) => el.child(div().p(8).text_center().line_height("20px").text_color(t.dim).child("No matching spaces or labels.")))));
   // T3's top group: 8 in and the search field 4 before its buttons, which touch. The right edge is the brand bar's above, so the two rows of icons line up.
   // The filter, New space and New tab show only with the pointer on this row, the keyboard on one of them, the filter's menu open, or a filter set.
-  const toolsShown = view.topHover || view.scopeOpen || scoped.length > 0 || within(view, ["inbox-scope", "inbox-new-space", "inbox-new-tab"]);
+  const toolsShown = view.topHover || view.scopeOpen || scoped.length > 0 || labels.length > 0 || within(view, ["inbox-scope", "inbox-new-space", "inbox-new-tab"]);
   const top = h_flex().id("inbox-top").h(32).px(8).gap(4).flex_none().items_center()
     .on_hover((hovered, cx) => { view.topHover = hovered; cx.notify(); })
     // Sized as T3's search field (h-8, 16px icon, a medium 14px placeholder), but a button: it opens Go to.
@@ -107,7 +128,7 @@ export function inboxTop(view, t, model) {
       .child(svg("mods/t3-inbox/icons/search.svg").size(16).flex_none().text_color(lit("inbox-search", t.dim)))
       .child(div().child("Search"))))
     .child(h_flex().flex_none().items_center().opacity(toolsShown ? 1 : 0).transition("opacity", { duration: 150, easing: "ease-out" })
-    .child(tip(view, t, "inbox-scope", "Filter by space", filter, { off: view.scopeOpen, hint: "Shift+click to pick several", below: true }))
+    .child(tip(view, t, "inbox-scope", "Filter by space or label", filter, { off: view.scopeOpen, hint: "Shift+click to pick several", below: true }))
     .child(tool("inbox-new-space", "New space", "folder-plus", (_e, cx) => {
       view.hot = null;
       // The layout's menu asks which machine, as its mod.json places it; the shipped one can't, so docked alone it's the active space's.

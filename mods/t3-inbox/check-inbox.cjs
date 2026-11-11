@@ -109,7 +109,7 @@ function fixture() {
     modStatus: (x) => f.state[`${x.mod}.status`]?.[x.tab] ?? null,
     localStorage: { getItem: (k) => f.data.get(k) ?? null, setItem: (k, v) => f.data.set(k, v) },
     keys: () => [], agents: () => f.rows, terminals: () => f.terms, panes: () => [],
-    spaces: () => [{ id: "s1", name: "One", tabs: [] }, { id: "s2", name: "Two", tabs: [] }],
+    spaces: () => [{ id: "s1", name: "One", tabs: [] }, { id: "s2", name: "Two", tabs: [] }], machines: () => [],
     focused: () => ({ agent: f.rows.find((a) => a.focused)?.address }),
     theme: () => ({}), settings: () => ({}), props: () => ({}),
     layout: () => ({ id: "sidebar-lists", active: f.mode }),
