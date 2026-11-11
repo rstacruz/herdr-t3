@@ -34,6 +34,8 @@
     "cmd-alt-[": "t3-tabs.space-prev",
     "ctrl-alt-shift-]": "t3-tabs.space-next",
     "ctrl-alt-shift-[": "t3-tabs.space-prev",
+    "alt-pageup": "t3-tabs.space-prev",
+    "alt-pagedown": "t3-tabs.space-next",
     "cmd-1": "t3-tabs.tab:1",
     "ctrl-alt-1": "t3-tabs.tab:1",
     "cmd-2": "t3-tabs.tab:2",
