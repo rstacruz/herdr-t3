@@ -23,7 +23,7 @@ Right-click an Inbox card for its menu:
 
 - A **Needs you** card can be snoozed too, from its clock or its right-click menu. It stays on the Snoozed shelf through that need, a failed turn included, until it wakes.
 - Once that need is over (answered elsewhere, or recovered), the next one shows it early again, as with any snooze.
-- The snooze menu adds **Tomorrow afternoon** (2:00 pm).
+- The snooze menu adds **This afternoon** (3:00 pm, before This evening) and **Tomorrow afternoon** (3:00 pm).
 
 ### Labels
 

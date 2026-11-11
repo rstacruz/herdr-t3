@@ -1297,7 +1297,7 @@ test("a hovered row that leaves the list (to the folded Working shelf) and comes
   assert.equal(find(f.tree, "settle-A").handlers.on_click, undefined, "no Settle offer either");
 });
 
-test("the snooze menu is T3's, plus tomorrow afternoon: soonest first, one row per wake minute, tonight gone once past", () => {
+test("the snooze menu is T3's, plus this and tomorrow afternoon: soonest first, one row per wake minute, today's gone once past", () => {
   const f = fixture(); f.add("A", "working"); f.mod.workOpen = true; f.mod.hovered = "A";
   const at = (day, h, m = 0) => new Date(2026, 10, day, h, m).getTime();
   const offered = (now) => {
@@ -1305,13 +1305,13 @@ test("the snooze menu is T3's, plus tomorrow afternoon: soonest first, one row p
     const panel = find(f.tree, "snooze-panel-A");
     return panel.items.filter((row) => row.key && !texts(row).includes("Custom…")).map((row) => texts(row).join(" "));
   };
-  assert.deepEqual(offered(at(3, 10)), ["In 1 hour 11:00 am", "In 3 hours 1:00 pm", "This evening 6:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"]);
-  assert.deepEqual(offered(at(3, 15)), ["In 1 hour 4:00 pm", "In 3 hours 6:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"], "6 pm from either shows once");
-  assert.deepEqual(offered(at(3, 19)), ["In 1 hour 8:00 pm", "In 3 hours 10:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"], "tonight's past");
-  assert.deepEqual(offered(at(3, 22)), ["In 1 hour 11:00 pm", "In 3 hours Wed 1:00 am", "Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm", "Next week Mon 9:00 am"], "another day names it");
-  assert.deepEqual(offered(at(8, 10)).slice(-2), ["Tomorrow 9:00 am", "Tomorrow afternoon 2:00 pm"], "on a Sunday next week is tomorrow");
+  assert.deepEqual(offered(at(3, 10)), ["In 1 hour 11:00 am", "In 3 hours 1:00 pm", "This afternoon 3:00 pm", "This evening 6:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 3:00 pm", "Next week Mon 9:00 am"]);
+  assert.deepEqual(offered(at(3, 15)), ["In 1 hour 4:00 pm", "In 3 hours 6:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 3:00 pm", "Next week Mon 9:00 am"], "6 pm from either shows once; this afternoon's past");
+  assert.deepEqual(offered(at(3, 19)), ["In 1 hour 8:00 pm", "In 3 hours 10:00 pm", "Tomorrow 9:00 am", "Tomorrow afternoon 3:00 pm", "Next week Mon 9:00 am"], "tonight's past");
+  assert.deepEqual(offered(at(3, 22)), ["In 1 hour 11:00 pm", "In 3 hours Wed 1:00 am", "Tomorrow 9:00 am", "Tomorrow afternoon 3:00 pm", "Next week Mon 9:00 am"], "another day names it");
+  assert.deepEqual(offered(at(8, 10)).slice(-2), ["Tomorrow 9:00 am", "Tomorrow afternoon 3:00 pm"], "on a Sunday next week is tomorrow");
   f.render(at(3, 10));
-  for (let i = 0; i < 4; i++) f.event("snooze-panel-A", "on_key_down", { key: "down" });
+  for (let i = 0; i < 5; i++) f.event("snooze-panel-A", "on_key_down", { key: "down" });
   f.event("snooze-panel-A", "on_action:t3_inbox_snooze_pick"); f.flush();
   assert.deepEqual(f.labelled, [`label A snoozed=${at(4, 9)}`], "keys pick; tomorrow is the next calendar day at 9:00");
 });

@@ -2,6 +2,10 @@
 
 English · [中文](CHANGELOG.zh-CN.md)
 
+## 2026-11-12
+
+- The snooze menu adds This afternoon (3:00 pm), before This evening, until it's past. Tomorrow afternoon wakes at 3:00 pm too; it used to be 2:00 pm.
+
 ## 2026-11-11
 
 - Snooze: a card that needs you can be snoozed too, from its clock or its right-click menu. It stays on the Snoozed shelf through that need, a failed turn included, until it wakes; once the need is over, the next one shows it early again. It used to have no clock.

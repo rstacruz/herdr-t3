@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · 中文
 
+## 2026-11-12
+
+- Snooze 菜单新增 This afternoon（下午 3:00），排在 This evening 之前，过点消失。Tomorrow afternoon 也改为下午 3:00，以前是 2:00。
+
 ## 2026-11-11
 
 - Snooze：需要你的卡片也能 Snooze，点时钟或右键都行。它进 Snoozed 收纳区，在这次需要期间一直藏着，这一轮失败也一样，直到醒来；需要结束后，下一次需要你时照常提前出现。以前没有时钟。
