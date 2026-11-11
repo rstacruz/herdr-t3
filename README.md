@@ -1,94 +1,37 @@
 # Herdr T3
 
-English · [中文](README.zh-CN.md)
+A private fork of [herdr-t3](https://github.com/JinJieBeWater/herdr-t3), a T3 Code-like layout for [Herdr App](https://herdr.dev).
 
-A layout for [Herdr App](https://herdr.dev) that lets you keep many agents running and look only at the ones that need you.
-
-![Herdr T3](preview.png)
-
-## Why
-
-> It's so nice to have 14 threads running and zero visible. Why let working threads get in the way of things that need your attention?
->
-> — [Theo](https://x.com/theo/status/2114131018575962496)
-
-I'd worked this way in T3 Code: what's running stays out of sight, what needs me shows up, I put it away when I'm done, and it comes back by itself when something new happens. I wanted to work the same way in Herdr, so I brought over T3 Code's Inbox and its look, and fitted them to Herdr's tabs, panes and machines.
-
-## Features
-
-- **Inbox and Lists**: two sidebars, one key apart. Inbox sorts agents by what needs you, with T3-style Settle and Snooze; Lists sorts them by project, without Inbox's Settle and Snooze.
-- **Home**: putting away the agent you're looking at lands on a quiet page, not the next card. What to look at next is yours to pick.
-- **One name, one set of marks**: cards, lists, tabs and pane headers name and mark each terminal the same way.
-- **Go to** (`cmd-p`): jump to any pane, agent or program, by its name.
-- **Actions**: T3 Code's run button for your own commands, in a new tab or a split.
-- **Slim tabs and framed panes**, in T3 Code's look.
-- **Other machines**: their spaces grouped by machine, their Inbox cards marked. In Lists, hover an Agents row to see its machine's name.
-- **Review** (optional): what's left to review in the worktree, in a pane beside the agent.
-
-Each in detail: [the guide](docs/user/guide.md).
-
-## Install
-
-Ask your Herdr agent to add `herdr.dev/layouts/JinJieBeWater/herdr-t3`. By hand: copy `layouts/herdr-t3.json`, `layouts/herdr-t3.svg` and every `mods/t3-*` into `~/.config/herdr-app/`, and merge `keys.json` into yours.
-
-Only want the Inbox? It is also published alone: [herdr-t3-inbox](https://github.com/JinJieBeWater/herdr-t3-inbox).
-
-## Quick start
-
-1. `cmd-shift-b` (or the button at the sidebar's top right) switches between Inbox and Lists.
-2. In Inbox, hover a finished card and click `✓ Settle` to put it away; new work brings it back. `cmd-shift-s` settles the agent you're looking at and goes Home.
-3. From Home, `cmd-]` opens the top card, so you can work down them one by one.
-4. Hover a card and click the clock to Snooze it until a time you pick.
-
-Dragging, sweeping across rows, pins and the rest: [Everyday use](docs/user/guide.md#everyday-use).
-
-## Keys
-
-| Key | Does |
-| --- | --- |
-| `cmd-shift-b` | Switch the sidebar between Inbox and Lists |
-| `cmd-shift-s` | Settle the agent you're looking at and go Home, or bring it back |
-| `cmd-]` / `cmd-[` | Next or previous agent, in the sidebar's order |
-| `cmd-p` | Go to any pane |
-| `cmd-shift-h` | Go Home |
-| `cmd-t` | New tab here; at Home, pick the space first |
-
-All of them: [Keys](docs/user/guide.md#keys).
-
-## Update
+Install or update into `~/.config/herdr-app`:
 
 ```sh
-git clone --depth 1 https://github.com/JinJieBeWater/herdr-t3 && herdr-t3/scripts/update.sh
+scripts/update.sh
 ```
 
-It overwrites the layout and its mods and merges `keys.json`; your pins, settled agents, actions, theme and focus ring stay. What it keeps and what it doesn't: [Update](docs/user/guide.md#update).
+## Additional features
 
-## What it runs
+### Early settle
 
-- `t3-spaces`: read-only `git status` / `git rev-parse` in your spaces' folders, watches those repos for changes (`watchFolder`), and `hc machine ls --json`. Clicking Connect on a rebuilt machine runs `hc machine rm` and `hc machine add`.
-- `t3-inbox`: `hc label <agent> settled=<ms>:<turn>` when an agent is settled or unsettled.
-- `t3-inbox`: `hc label <agent> snoozed=<ms>` when an agent is snoozed or wakes.
-- `t3-tabs`: `hc get` before closing a terminal, to see whether a program is running in it. `hc label` when `cmd-shift-s` settles or brings back an agent, and to give back an unread done (`herdr.seen`) or a Woke mark (`snoozed`) that Herdr cleared when it showed a tab you didn't pick, and `hc label <agent> snoozed=` when a failed turn or new work in view ends a snooze.
-- `t3-agents`: `hc label <agent> snoozed=` when pinning a snoozed agent ends its snooze.
-- `t3-chrome`: on macOS, when the zoom changes, it rewrites the window button position in the installed `layouts/herdr-t3.json`, so the buttons stay on the brand bar's middle line.
-- `t3-spaces`, `t3-agents`, `t3-inbox`, `t3-new-menu`, `t3-picker`: for each space's icon, `git rev-parse --show-toplevel`, `sh` file tests and `base64` where the space is (on its machine); a found icon is copied into `cache/t3-icons/`.
+Right-click an Inbox card for its menu:
 
-No network requests.
+- **Settle** works while the agent is still working. It stays settled through that run and the turn it ends, unless it needs you; the turn after brings it back.
+- **Mark unread** puts an idle agent back to Done, and brings it back if it was settled.
+- The space's own items (Rename space, Labels…, worktrees, Close space) follow.
 
-## Extras (optional)
+### Labels
 
-- **pulls.review**: a Review bar and a review pane.
-- **Theme export for Pi**: Pi's colors follow Herdr's.
-- **Themes**: Catppuccin and T3 Code, light and dark.
+Give spaces labels, and filter by them.
 
-How to add them: [the extras](docs/user/extras.md).
+- **Labels…** in a space's menu (or an Inbox card's) opens the `t3-labels` dialog. Click a label to toggle it; type a new one and press Enter to add it.
+- The Spaces list heading has a label filter. Click a label to show only its spaces; shift-click to pick several.
+- The Inbox's space filter lists labels too. Spaces and labels add up: a card shows when its space is picked or has a picked label.
+- Labels are stored per machine in `~/.config/herdr-space-labels.json`, so every screen showing that machine's spaces sees the same ones.
+
+### UI cleanup
+
+- The Inbox's top-row buttons (filter, New space, New tab) show only on hover, while the keyboard is on one of them, while the filter's menu is open, or while a filter is set.
+- No divider beside the sidebar.
 
 ## Credits and license
 
-`t3-chrome`, `t3-spaces`, `t3-agents`, `t3-tabs`, `t3-pane`, `t3-new-menu`, `t3-picker` and the layout start from Herdr App's shipped `workspace-chrome`, `spaces`, `agents`, `tabs`, `pane`, `new-menu`, `picker` and `main`. Settle follows T3 Code's design. The Catppuccin themes use the [Catppuccin](https://github.com/catppuccin/catppuccin) palette (MIT License, Copyright (c) 2021 Catppuccin); the T3 Code themes take [T3 Code](https://github.com/pingdotgg/t3code)'s default colors (MIT License, Copyright (c) 2026 T3 Tools Inc.). Icons are [Lucide](https://lucide.dev)'s (ISC License, Copyright (c) Lucide Contributors). Apache-2.0, as Herdr App.
-
-## More
-
-- [herdr-t3-inbox](https://github.com/JinJieBeWater/herdr-t3-inbox): this layout's Inbox sidebar as a standalone mod.
-- [herdling](https://github.com/JinJieBeWater/herdling): a macOS menu bar companion for Herdr.
-- [pi-stuff](https://github.com/JinJieBeWater/pi-stuff): my Pi extensions and skills.
+Based on [herdr-t3](https://github.com/JinJieBeWater/herdr-t3) by [JinJieBeWater](https://github.com/JinJieBeWater), licensed under the [Apache License 2.0](LICENSE). This fork keeps that license; its changes are listed above and in the git history.
