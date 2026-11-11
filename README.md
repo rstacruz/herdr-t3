@@ -32,6 +32,10 @@ Give spaces labels, and filter by them.
 - The Inbox's top-row buttons (filter, New space, New tab) show only on hover, while the keyboard is on one of them, while the filter's menu is open, or while a filter is set.
 - No divider beside the sidebar.
 
+### More additional features
+
+- `alt-pageup` / `alt-pagedown` switch to the previous / next space.
+
 ## Credits and license
 
 Based on [herdr-t3](https://github.com/JinJieBeWater/herdr-t3) by [JinJieBeWater](https://github.com/JinJieBeWater), licensed under the [Apache License 2.0](LICENSE). This fork keeps that license; its changes are listed above and in the git history.
