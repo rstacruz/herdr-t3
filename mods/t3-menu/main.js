@@ -85,7 +85,8 @@ function agentItems(address) {
       // The Inbox's, worked while working: settling mid-run holds through that run and the turn it ends (t3-inbox's settle).
       ...(inbox && a && stillSettled(k, own, kids) ? [["Un-settle", `t3-tabs.settle:${address}`, {}, inView ? shortcut("t3-tabs.settle") : ""]] : []),
       ...(inbox && a && !stillSettled(k, own, kids) && treeStatus(own, kids) !== "blocked" ? [["Settle", `t3-inbox.settle:${address}`, {}, inView ? shortcut("t3-tabs.settle") : ""]] : []),
-      ...(inbox && a ? napping ? [["Wake", `t3-tabs.wake:${address}`, {}]] : treeStatus(own, kids) !== "blocked" ? [["Snooze", "snooze", { address }]] : [] : []),
+      // A card that needs the person can be snoozed through that need, as its clock offers (tree.js `:held`).
+      ...(inbox && a ? napping ? [["Wake", `t3-tabs.wake:${address}`, {}]] : [["Snooze", "snooze", { address }]] : []),
       // Back to Done, as if it had just finished: its turn seen count goes one back (t3-inbox's markUnread).
       ...(inbox && a && own === "idle" && Number(k.turn) > 0 ? [["Mark unread", `t3-inbox.unread:${address}`, {}]] : []),
     ],

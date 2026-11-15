@@ -1,4 +1,4 @@
-import { kidStatus, descendants, ownStatus, treeStatus } from "./tree.js";
+import { kidStatus, descendants, ownStatus, treeStatus, snoozeOf } from "./tree.js";
 
 // The settled tail opens on this many, then grows by MORE.
 export const FIRST = 10, MORE = 25;
@@ -89,9 +89,12 @@ export function inboxFields({ every, all, term, pending, changed, now, inView })
   const state = (a) => treeStatus(ownStatus(a.status, a.address, all), kids.get(a.address));
   const running = (a) => state(a) === "working";
   // When a snooze ends (0: none). Past it, the label stays as "woke, not looked at yet".
-  const napUntil = (a) => Number(pending.snoozed[a.address] ?? term.get(a.address)?.labels?.snoozed) || 0;
-  // Out of sight until then, unless it needs the person.
-  const hidden = (a) => !settledAt(a) && napUntil(a) > now && state(a) !== "blocked";
+  const nap = (a) => snoozeOf(pending.snoozed[a.address] ?? term.get(a.address)?.labels?.snoozed);
+  const napUntil = (a) => nap(a).until;
+  // Snoozed while it needed the person: that need doesn't show it (tree.js).
+  const napHeld = (a) => nap(a).held;
+  // Out of sight until then, unless it needs the person afresh.
+  const hidden = (a) => !settledAt(a) && napUntil(a) > now && (state(a) !== "blocked" || napHeld(a));
   const woke = (a) => napUntil(a) > 0 && napUntil(a) <= now;
   const mark = (a) => changed[a.address];
   // Seen changing, then; before that, the core's time of its last change. terminals() only has that as of
@@ -107,7 +110,7 @@ export function inboxFields({ every, all, term, pending, changed, now, inView })
   const started = (a) => mark(a)?.at || (a.status === "working" ? term.get(a.address)?.status_ms
     : Math.min(Infinity, ...descendants(all, a.address).filter((k) => kidStatus(k, listed) === "working").map((k) => k.status_ms).filter(Boolean)));
 
-  return { viewing, settledAt, kids, busy, state, running, napUntil, hidden, woke, since, working, begun, started };
+  return { viewing, settledAt, kids, busy, state, running, napUntil, napHeld, hidden, woke, since, working, begun, started };
 }
 
 // Plain row facts in; ordered sections, visible pages and the next wake out. No storage, commands or timers.

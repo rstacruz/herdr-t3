@@ -711,6 +711,14 @@ async function check() {
     h.terminals().push(kid); Object.assign(h.shown, { agent: "kid", pane: undefined, terminal: undefined });
     peek.frame(); kid.status = "working"; peek.frame();
     assert.deepEqual(h.labelled.filter(l => l[2].startsWith("snoozed=")).map(l => l.join(" ")), ["label t0 snoozed="], "peeked at: the snooze ends");
+
+    // Snoozed through a need, its failure doesn't end it; the need over, only the mark goes, so the next need shows it.
+    const m = fixture(), [q] = m.agents(), [kq] = m.terminals(), held = m.navigation(), until = String(Date.now() + 3600000);
+    q.status = "blocked"; q.focused = false; kq.status = "error"; kq.labels = { snoozed: `${until}:held` };
+    held.frame(); held.frame();
+    assert.deepEqual(m.labelled.filter(l => l[2].startsWith("snoozed=")), [], "a held failure stays snoozed");
+    q.status = kq.status = "idle"; held.frame();
+    assert.deepEqual(m.labelled.filter(l => l[2].startsWith("snoozed=")).map(l => l.join(" ")), [`label t0 snoozed=${until}`]);
   }
   // The layout's settings (t3.settings): a dialog of t3-chrome's, opened by the key this bar answers; one at a time.
   {

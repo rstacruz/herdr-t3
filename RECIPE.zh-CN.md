@@ -317,7 +317,7 @@ Herdr API：`spaces/panes/agents/terminals/focused/layout/settings/window/keys`�
 | 部分 | 外部程序／写入 |
 | --- | --- |
 | Spaces | 只读 `git status/rev-parse`、`hc machine ls --json`；重建机器 Connect：`hc machine rm` 再 `hc machine add` |
-| Inbox／tab 命令／Agents pin | `hc label <address> settled=<ms>:<turn>`、`snoozed=<wake-ms>` 或清空；恢复未读时写 `herdr.seen` |
+| Inbox／tab 命令／Agents pin | `hc label <address> settled=<ms>:<turn>`、`snoozed=<wake-ms>`（或 `<wake-ms>:held`） 或清空；恢复未读时写 `herdr.seen` |
 | 关闭／导航 | `hc get <terminal> --json`；原生 space/tab/pane 新建/选择/移动/改名/关闭，`agent.focus`、`pane.focus`、`terminal.peek`、split/zoom/`terminal.park` |
 | 布局 chrome | `layout.select/show/hide/resize`；安装布局仅 `traffic_lights` 字段，不整份 `layout.set` |
 | Space 图标 | space 机器上 `git rev-parse --show-toplevel`、`sh -c` 检查、`base64`；app `cache/t3-icons/`，共享图标/颜色信息 |

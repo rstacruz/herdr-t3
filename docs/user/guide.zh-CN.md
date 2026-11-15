@@ -35,7 +35,7 @@
   - **After putting away**：Home（默认），或 Next card：Settle、Snooze、拖走或划走当前查看的 agent 后打开下一张卡片，没有下一张就回 Home。关闭 agent 的标签仍回 Home。
   - **Home shows**：Default 是三个按钮的页面；Terminal 是主目录下的 shell；也可以选你自己的 mod。`~/.config/herdr-app/mods` 里 `mod.json` 写了 `"home": true` 的 mod 才会出现在选项里。选了立即替换。在 Home 的终端里起 agent，这个 space 会原地变成普通 space，按目录命名，画面不动；下次回 Home 会新建一个 Home。
 - **聚焦边框**（默认关闭）：把 `~/.config/herdr-app/layouts/herdr-t3.json` 里窗格的 `focus.color` 从 `"background"` 改成 `"accent"`（或其他主题色），聚焦的窗格就会有边框。保存即生效。
-- **Snooze**：鼠标移到卡片上（工作中的也可以，需要你的不行），点时钟选时间。它进 Snoozed 收纳区等待，到点回到原位并标 `Woke`，直到你看过它或点一下这个标记。其间需要你时它会出现；这一轮失败、你在查看时给了新工作（Lists 里也算）、置顶或 Settle 都会结束 Snooze。5 秒内可以点 `Undo` 撤回；在收纳区里，悬停一行出现划掉的闹钟（按住划过多行可以一次叫醒整段），也可以把它拖出来。
+- **Snooze**：鼠标移到卡片上（需要你的也可以），点时钟选时间。它进 Snoozed 收纳区等待，到点回到原位并标 `Woke`，直到你看过它或点一下这个标记。其间需要你时它会出现；这一轮失败、你在查看时给了新工作（Lists 里也算）、置顶或 Settle 都会结束 Snooze。5 秒内可以点 `Undo` 撤回；在收纳区里，悬停一行出现划掉的闹钟（按住划过多行可以一次叫醒整段），也可以把它拖出来。
 
 ## 快捷键
 

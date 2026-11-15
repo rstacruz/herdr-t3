@@ -317,7 +317,7 @@ Herdr APIs: `spaces/panes/agents/terminals/focused/layout/settings/window/keys`,
 | Component | External programs / writes |
 | --- | --- |
 | Spaces | Read-only `git status/rev-parse`, `hc machine ls --json`; rebuilt-machine Connect: `hc machine rm`, then `hc machine add` |
-| Inbox / tab commands / Agents pin | `hc label <address> settled=<ms>:<turn>`, `snoozed=<wake-ms>` or clear; tab navigation also writes `herdr.seen` when restoring unread |
+| Inbox / tab commands / Agents pin | `hc label <address> settled=<ms>:<turn>`, `snoozed=<wake-ms>` (or `<wake-ms>:held`) or clear; tab navigation also writes `herdr.seen` when restoring unread |
 | Close / navigation | `hc get <terminal> --json`; native space/tab/pane create/select/move/rename/close, `agent.focus`, `pane.focus`, `terminal.peek`, split/zoom/`terminal.park` |
 | Layout chrome | `layout.select/show/hide/resize`; installed layout's `traffic_lights` field only, not a whole `layout.set` |
 | Space icons | On space's machine: `git rev-parse --show-toplevel`, `sh -c` file tests, `base64`; copies under app `cache/t3-icons/`, shared icon/color metadata |

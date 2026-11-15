@@ -54,9 +54,16 @@ export function stillSettled(k, word, kids) {
   return !busy(word) && !kids.some(busy) && turn <= Number(at);
 }
 
+// A snooze label: `<wake ms>`, or `<wake ms>:held` when it was snoozed while needing the person. Held, it stays out of
+// sight through that need, a failure too; once the need is over the mark goes, and the next one shows it early again.
+export function snoozeOf(label) {
+  const [until, held] = String(label ?? "").split(":");
+  return { until: Number(until) || 0, held: held === "held" };
+}
+
 // Settled or snoozed (until it wakes) isn't news in either sidebar.
 export function notNews(k, word, kids) {
-  return stillSettled(k, word, kids) || Number(k?.labels?.snoozed) > Date.now();
+  return stillSettled(k, word, kids) || snoozeOf(k?.labels?.snoozed).until > Date.now();
 }
 
 // Snapshot once per render, like namer(): what's under each address, as words.

@@ -16,7 +16,12 @@ Right-click an Inbox card, an Agents row or the tab bar's title for the agent's 
 
 - **Settle** works while the agent is still working. It stays settled through that run and the turn it ends, unless it needs you; the turn after brings it back.
 - **Mark unread** puts an idle agent back to Done, and brings it back if it was settled.
-- Pin, Snooze, Rename, Copy address and Close are the menu's, as upstream draws them.
+- Pin, Snooze, Rename, Copy address and Close are the menu's, as upstream draws them. Snooze opens its times beside the menu, and a card that needs you can be snoozed through that need.
+
+### Snooze what needs you
+
+- A **Needs you** card can be snoozed too, from its clock or its right-click menu. It stays on the Snoozed shelf through that need, a failed turn included, until it wakes.
+- Once that need is over (answered elsewhere, or recovered), the next one shows it early again, as with any snooze.
 
 ### Labels
 
@@ -35,6 +40,8 @@ Give spaces labels, and filter by them.
 ### More additional features
 
 - `alt-pageup` / `alt-pagedown` switch to the previous / next space.
+- The Working shelf's agents are slim rows, as Snoozed's: the name, then a spinner and how long it's been at it. Hover for the snooze clock.
+- The snooze menu adds **This afternoon** (3:00 pm, before This evening) and **Tomorrow afternoon** (3:00 pm).
 
 ## Credits and license
 

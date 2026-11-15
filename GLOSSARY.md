@@ -61,7 +61,7 @@ _Avoid_: 当前 agent、选中的 agent
 _Avoid_: archive、dismiss、完成
 
 **Snooze**：
-把不需要你的 agent 藏到人选的时间；到点回到原位，标为 Woke。
+把 agent 藏到人选的时间；到点回到原位，标为 Woke。需要你时 Snooze 的，藏过这次需要。
 _Avoid_: 稍后提醒、mute
 
 **Woke**：

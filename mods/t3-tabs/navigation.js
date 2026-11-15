@@ -1,6 +1,6 @@
 import { spaces, panes, agents, terminals, machines, run, openOverlay, closeOverlay, focused, hc, notify, layout, shared, setShared, home, window } from "herdr";
 import { namer, programOf } from "./name.js";
-import { descendants, kidStatus, ownStatus, treeStatus } from "./tree.js";
+import { descendants, kidStatus, ownStatus, snoozeOf, treeStatus } from "./tree.js";
 import { focusAgent, focusPane } from "./zoom.js";
 import { sidebarParts } from "./sidebar.js";
 import { newTab } from "./project.js";
@@ -336,6 +336,7 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
 
   // A snooze ends on a failure in its tree or a new turn given in view, as the Inbox ends it; here too, in either sidebar,
   // as the Inbox copy may not have started (docs/adr/0003). Seeing it once it has woken stays the Inbox's: Woke is its mark.
+  // Snoozed through a need (`:held`), a failure was the person's to put off; once the need is over the mark goes.
   function endSnoozes(terms, every) {
     const was = states, active = window()?.active, now = Date.now();
     const listed = new Map(every.map(a => [a.address, a.status]));
@@ -345,12 +346,14 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
     for (const a of every) {
       const k = terms.find(k => k.address === a.address);
       if (!k?.labels?.snoozed || now - (waking.get(a.address) ?? -Infinity) < 10000) continue;
-      const failed = k.status === "error" || descendants(terms, a.address).some(d => d.status === "error");
+      const nap = snoozeOf(k.labels.snoozed);
+      const failed = !nap.held && (k.status === "error" || descendants(terms, a.address).some(d => d.status === "error"));
       const turned = active && a.address === viewed && states.get(a.address) === "working" && ["idle", "done"].includes(was.get(a.address));
-      if (!failed && !turned) continue;
+      const over = nap.held && states.get(a.address) !== "blocked";
+      if (!failed && !turned && !over) continue;
       // Once per 10s: the label takes a moment to come back, and a refused write mustn't retry, and tell, on every frame.
       waking.set(a.address, now);
-      writeLabel(a.address, "snoozed", "");
+      writeLabel(a.address, "snoozed", failed || turned ? "" : String(nap.until));
     }
   }
 

@@ -2,7 +2,7 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex, Popup } from "gpui-base";
 import { spaces, panes, agents, terminals, run, openOverlay, focused, notify, theme, window, layout, settings, props, shared, setShared, nextCommand } from "herdr";
 import { modStatus, namer, programOf } from "./name.js";
-import { notNews, ownStatus, stillSettled, subAgents, treeStatus } from "./tree.js";
+import { notNews, ownStatus, snoozeOf, stillSettled, subAgents, treeStatus } from "./tree.js";
 import { tip, glow } from "./tip.js";
 import { detailsFor, detailsAt, detailsWatch } from "./details.js";
 import { programIcon } from "./program.js";
@@ -27,13 +27,13 @@ const findNode = (node, id) => node?.id === id ? node : (node?.children ?? []).r
 
 // What the hidden sidebar's toggle counts, as the selected sidebar shows it. In the Inbox an agent settled there isn't news
 // while it stays settled, and a snoozed one, until it wakes, isn't news either, working or done; while it or what's under it
-// needs the person it shows there, so it counts here too. In Lists either only loses its done dot.
+// needs the person it shows there, so it counts here too, unless it was snoozed through that need. In Lists either only loses its done dot.
 function awake(st, under, inbox) {
   const now = Date.now(), byAddress = new Map(terminals().map((k) => [k.address, k]));
   return agents().filter((a) => {
-    const k = byAddress.get(a.address), s = st(a);
+    const k = byAddress.get(a.address), s = st(a), nap = snoozeOf(k?.labels?.snoozed), napping = nap.until > now;
     if (!inbox) return !(s === "done" && notNews(k, a.status, under(a.address)));
-    return s === "blocked" || (!stillSettled(k, a.status, under(a.address)) && !(Number(k?.labels?.snoozed) > now));
+    return (s === "blocked" && !(napping && nap.held)) || (!stillSettled(k, a.status, under(a.address)) && !napping);
   });
 }
 
@@ -184,9 +184,13 @@ export default class Tabs extends View {
     const i = arg.lastIndexOf(":"), address = arg.slice(0, i), at = Number(arg.slice(i + 1));
     if (!(at > Date.now())) return notify({ title: "Couldn't snooze the agent", body: "That time has passed. Choose another.", level: "warning" });
     if (this.navigation.atHome || sidebarParts(layout()).stack?.active === "lists") return;
-    const f = { ...focused() }, was = terminals().find(k => k.address === address)?.labels?.snoozed ?? "";
-    const inView = f.terminal === address || agents().find(a => a.focused)?.address === address;
-    if (!await writeLabel(address, "snoozed", String(at))) return;
+    const f = { ...focused() }, all = terminals(), every = agents();
+    const k = all.find(k => k.address === address), a = every.find(x => x.address === address), was = k?.labels?.snoozed ?? "";
+    if (!k) return;
+    const inView = f.terminal === address || every.find(x => x.focused)?.address === address;
+    // Snoozed while it needs the person, it stays out of sight through that need (tree.js snoozeOf).
+    const held = Boolean(a) && treeStatus(ownStatus(a.status, address, all), subAgents(every, all)(address)) === "blocked";
+    if (!await writeLabel(address, "snoozed", `${at}${held ? ":held" : ""}`)) return;
     this.remember("Snoozed", { address, snoozed: was }, cx);
     const current = focused();
     if (inView && ["space", "tab", "pane", "terminal", "agent"].every(key => current?.[key] === f[key]) && !this.navigation.nextCard(address)) run("t3-tabs.home");
@@ -235,7 +239,7 @@ export default class Tabs extends View {
       if (n.action !== "Unpinned") {
         if (!await writeLabel(u.address, "settled", "")) { failed.unshift(u); continue; }
         back = u.address;
-        if (Number(u.snoozed) > Date.now()) await writeLabel(u.address, "snoozed", u.snoozed);
+        if (snoozeOf(u.snoozed).until > Date.now()) await writeLabel(u.address, "snoozed", u.snoozed);
       }
       putBack(u.pins, [u.address]);
     }

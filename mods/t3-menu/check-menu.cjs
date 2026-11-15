@@ -74,7 +74,7 @@ assert.deepEqual(choose({ tab: "space", target: { id: "s1" } }, "Close"), [["spa
   agent({ status: "working" });
   assert.deepEqual(labels(), ["Pin", "Settle", "Snooze", "Rename", "Copy address", "Close"], "working: Settle still offered, and it holds through that run");
   agent({ status: "blocked" });
-  assert.deepEqual(labels(), ["Pin", "Rename", "Copy address", "Close"], "needing you: neither Settle nor Snooze");
+  assert.deepEqual(labels(), ["Pin", "Snooze", "Rename", "Copy address", "Close"], "needing you: Snooze offered, and it holds through that need; no Settle");
   agent({ status: "idle" });
   assert.ok(labels().includes("Mark unread"), "idle: back to Done");
   assert.deepEqual(choose({ tab: "agent", target: { address: "t1" } }, "Mark unread"), [["t3-inbox.unread:t1", {}]], "the Inbox writes Herdr's seen marker");

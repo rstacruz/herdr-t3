@@ -8,6 +8,8 @@ English · [中文](CHANGELOG.zh-CN.md)
 
 ## 2026-11-12
 
+- Inbox: the Working shelf's agents are slim rows, as Snoozed's: the space's mark, the name, and a spinner with how long the run has gone. Hover one for its snooze clock and details. They used to be full cards.
+- The snooze menu adds This afternoon (3:00 pm), before This evening, until it's past. Tomorrow afternoon wakes at 3:00 pm too; it used to be 2:00 pm.
 - Buttons now look and behave the same across the layout and its extras. A primary button is filled with your theme's ink, so asciicn wallpaper's **Choose image…** stays readable while it says **Opening…**. A disabled button fades to 64% and keeps its colours: the Actions editor's Save no longer turns grey, and Review's greyed buttons are easier to read. Hover now shows on dialogs, popovers, pane headers and the side panel in every theme, including Catppuccin, where it didn't show before. Icon buttons in Files and Review rest a little dimmer, like the rest of the layout. A few buttons changed size slightly: the pane header's sub-agents button, the pin in Lists, the Snooze calendar arrows and the Review bar's buttons.
 - Shade-heavy `.ans` wallpapers now import without exceeding the tile writer's 1 MiB limit.
 - Wallpaper imports preserve Unicode, leading-dash and hidden filenames. External `.ans`, `..ans` and `...ans` files are safely rejected; ordinary hidden names such as `.hidden.ans` work.
@@ -28,6 +30,7 @@ English · [中文](CHANGELOG.zh-CN.md)
 
 ## 2026-11-11
 
+- Snooze: a card that needs you can be snoozed too, from its clock or the agent's right-click menu. It stays on the Snoozed shelf through that need, a failed turn included, until it wakes; once the need is over, the next one shows it early again. It used to have no clock.
 - Switching Review's scope on a big diff no longer now and then shows "This view could not be re-rendered" in place of the page: wrapping its long lines is several times faster and no longer happens while the page draws.
 - The Actions menu is narrower, as wide as the layout's other menus: 220 px instead of 280. A long action name is cut short. It now hangs right under the control with their right edges lined up, as the other menus hang from their buttons, instead of under wherever you clicked; so does the Review bar's menu in Herdr's own layout.
 - The tab bar's last button (the panel's, or `+`) now stands right over the pane headers' last button, about as far from the window's corner as the sidebar's buttons from its edge. It sat 8 px further in.
