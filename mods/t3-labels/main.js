@@ -3,7 +3,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { props, closeOverlay, theme, spaces } from "herdr";
-import { labelsOf, knownLabels, loadLabels, saveLabels } from "./labels.js";
+import { labelsOf, knownLabels, loadLabels, saveLabels } from "./space-labels.js";
 
 export default class SpaceLabels extends View {
   init(_props, cx) {

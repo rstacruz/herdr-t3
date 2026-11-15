@@ -1,7 +1,7 @@
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Popover, Input } from "gpui-base";
 import { spaces, machines, shared, run, props, openOverlay } from "herdr";
-import { labelsOf, knownLabels } from "./labels.js";
+import { labelsOf, knownLabels } from "./space-labels.js";
 import { projectMark } from "./project.js";
 import { glow, tip } from "./tip.js";
 import { stop, pressed, justClosed, within } from "./focus.js";

@@ -2,7 +2,7 @@
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
 // switch, right-click for its menu, drag to reorder. The heading's filter shows only spaces with the labels picked
-// (a space's menu sets them, labels.js keeps them).
+// (a space's menu sets them, space-labels.js keeps them).
 
 import { View, div, svg } from "gpui-kit";
 import { foldArrow, planMotion, flying, leavingRows } from "./motion.js";
@@ -10,7 +10,7 @@ import { v_flex, h_flex, Popover } from "gpui-base";
 import { spaces, machines, panes, focused, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, props, layout, nextCommand } from "herdr";
 import { projectMark, tint } from "./project.js";
 import { repoFacts } from "./repos.js";
-import { labelsOf, knownLabels, loadLabels } from "./labels.js";
+import { labelsOf, knownLabels, loadLabels } from "./space-labels.js";
 import { dragGone, glow, hoverKept, tip, tipMark, POINTER_WATCH, pointerMoved } from "./tip.js";
 import { stopsInit, stopsEnd, stop, focusRoot, enter, pressed, justClosed } from "./focus.js";
 import { sidebarParts } from "./sidebar.js";

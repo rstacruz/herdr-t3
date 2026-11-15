@@ -18,7 +18,7 @@ import { stopsInit, stopsEnd, focusRoot, enter } from "./focus.js";
 import { FIRST, trackInboxRows, inboxInView, inboxFields, inboxSections } from "./row-model.js";
 import { DAY, initCustom, customView } from "./snooze.js";
 import { inboxMatches, pickInboxSpace } from "./filter.js";
-import { labelsOf, knownLabels, loadLabels } from "./labels.js";
+import { labelsOf, knownLabels, loadLabels } from "./space-labels.js";
 import { inboxActions } from "./actions.js";
 import { inboxDrag } from "./drag.js";
 import { inboxRowView } from "./row-view.js";
