@@ -16,14 +16,15 @@
 
 ## 功能
 
-- **Inbox 和 Lists**：两种侧栏，一键切换。Inbox 按什么需要你来排，带 T3 式的 Settle 和 Snooze；Lists 按项目排，不带 Inbox 的 Settle 和 Snooze。
-- **Home**：收起正在看的 agent 后，回到一个安静的页面，不会自动跳到下一张卡片。下一步看什么由你决定。
+- **Inbox 和 Lists**：两种侧栏，一键切换。Inbox 按什么需要你来排，带 T3 式的 Settle 和 Snooze；Lists 按项目排 space，agent 按优先级或按 space 分组，不带 Inbox 的 Settle 和 Snooze。
+- **Home**：收起正在看的 agent 后，回到一个安静的页面，不会自动跳到下一张卡片。下一步看什么由你决定。也可以在设置（`cmd-shift-,`）里改成跳到下一张卡片，或者把 Home 换成终端或你自己的 mod。
 - **同一个名字，同一套标记**：卡片、列表、标签和窗格标题用同样的方式给终端取名、标状态。
 - **跳转**（`cmd-p`）：按名字跳到任何窗格，agent 和普通程序都行。
 - **动作**：类似 T3 Code 的运行按钮，运行你自己的命令，在新标签或分屏里。
 - **窄标签、带框窗格**，照 T3 Code 的外观。
 - **其他机器**：它们的 space 按机器分组，Inbox 卡片带机器标记；Lists 中悬停 Agents 行查看机器名。
-- **Review**（可选）：在 agent 旁边的窗格里看当前 worktree 待评审的内容。
+- **Files**：在窗口右侧的面板里只读浏览 space 的文件夹：文件树贴窗口外沿，选中的文件显示在它旁边。切换标签时面板不动，换到别的 space 时跟着换。隐藏时停止文件刷新，每页只缓存最近三个 space 的完整数据。
+- **Review**（可选）：同一个面板的另一页，看当前 worktree 待评审的内容。Files 和 Review 各记文件、阅读位置、换行和树宽，切页恢复各自的状态。
 
 每项的详细说明见[使用指南](docs/user/guide.zh-CN.md)。
 
@@ -51,6 +52,9 @@
 | `cmd-]` / `cmd-[` | 按侧栏的顺序到下一个或上一个 agent |
 | `cmd-p` | 跳到任一窗格 |
 | `cmd-shift-h` | 回到 Home |
+| `cmd-shift-,` | 布局的设置 |
+| `cmd-alt-b` | 打开或关闭 space 面板，停在上次的页面 |
+| `cmd-shift-g` | 打开 Review；面板正显示 Review 时关闭面板（Review 扩展） |
 | `cmd-t` | 在当前位置新建标签；在 Home 时先选 space |
 
 完整列表见[快捷键](docs/user/guide.zh-CN.md#快捷键)。
@@ -71,21 +75,23 @@ git clone --depth 1 https://github.com/JinJieBeWater/herdr-t3 && herdr-t3/script
 - `t3-tabs`：关闭终端前运行 `hc get`，看里面有没有程序在跑。用 `cmd-shift-s` Settle 或取回 agent 时运行 `hc label`；Herdr 显示了你没选的标签、清掉了未读的 done（`herdr.seen`）或 Woke 标记（`snoozed`）时，也用它还回去；这一轮失败或查看时有新工作结束 Snooze 时，运行 `hc label <agent> snoozed=`；需要你时 Snooze 的 agent 不再需要你时，运行 `hc label <agent> snoozed=<ms>` 去掉 `:held`。
 - `t3-agents`：置顶一个 Snooze 中的 agent、结束它的 Snooze 时，运行 `hc label <agent> snoozed=`。
 - `t3-chrome`：macOS 上缩放变化时，改写已安装的 `layouts/herdr-t3.json` 里的窗口按钮位置，让按钮留在品牌栏的中线上。
+- `t3-files`：只读，在 space 所在的机器上执行：`git rev-parse`、`git status`、`git check-ignore` 和 `git ls-files`（带 `--no-optional-locks`，不会往 `.git` 里写东西），用 `sh` 列文件夹，在其他机器上也用它查文件大小、搜路径；不在 Git 里时用 `find`；其他机器上的图片用 `base64` 传回。显示的图片复制到 `cache/t3-files/`，mod 停止时删掉。右键菜单：Reveal in Finder 和 Open in default app 执行 `open`（Linux 上是 `xdg-open`）；Mention in agent 借剪贴板粘贴进 agent 的终端，然后恢复你原来的剪贴板。
 - `t3-spaces`、`t3-agents`、`t3-inbox`、`t3-new-menu`、`t3-picker`：为每个 space 的图标，在 space 所在的位置（它的机器上）运行 `git rev-parse --show-toplevel`、`sh` 文件检测和 `base64`；找到的图标复制到 `cache/t3-icons/`。
 
 不发网络请求。
 
 ## 可选扩展
 
-- **pulls.review**：Review 栏和评审窗格。
+- **pulls.review**：Review 栏和面板里的 Review 页。
 - **给 Pi 用的主题导出**：让 Pi 的配色跟着 Herdr 走。
+- **asciicn 壁纸**：Home 的配色跟着主题：自带 4 张画，也能先用 Braille、Blocks 或 Dots 预览自己的图片再应用，或导入 Studio 的 `.ans`，支持 Unicode、短横开头和隐藏文件名。Apply 失败会保留预览供重试；删除加进来的壁纸前会再次确认，并停止它的转换。见[可选扩展](docs/user/extras.zh-CN.md#asciicn-壁纸)。
 - **主题**：Catppuccin 和 T3 Code，各有明暗两套。
 
 安装方法见[可选扩展](docs/user/extras.zh-CN.md)。
 
 ## 致谢与许可证
 
-`t3-chrome`、`t3-spaces`、`t3-agents`、`t3-tabs`、`t3-pane`、`t3-new-menu`、`t3-picker` 和布局本身，分别基于 Herdr App 自带的 `workspace-chrome`、`spaces`、`agents`、`tabs`、`pane`、`new-menu`、`picker` 和 `main` 修改。Settle 参照 T3 Code 的设计。Catppuccin 主题使用 [Catppuccin](https://github.com/catppuccin/catppuccin) 色板（MIT 许可证，Copyright (c) 2021 Catppuccin）；T3 Code 主题取自 [T3 Code](https://github.com/pingdotgg/t3code) 的默认配色（MIT 许可证，Copyright (c) 2026 T3 Tools Inc.）。图标来自 [Lucide](https://lucide.dev)（ISC 许可证，Copyright (c) Lucide Contributors）。许可证与 Herdr App 相同，为 Apache-2.0。
+`t3-chrome`、`t3-spaces`、`t3-agents`、`t3-tabs`、`t3-pane`、`t3-new-menu`、`t3-picker` 和布局本身，分别基于 Herdr App 自带的 `workspace-chrome`、`spaces`、`agents`、`tabs`、`pane`、`new-menu`、`picker` 和 `main` 修改。Settle 参照 T3 Code 的设计。Catppuccin 主题使用 [Catppuccin](https://github.com/catppuccin/catppuccin) 色板（MIT 许可证，Copyright (c) 2021 Catppuccin）；T3 Code 主题取自 [T3 Code](https://github.com/pingdotgg/t3code) 的默认配色（MIT 许可证，Copyright (c) 2026 T3 Tools Inc.）。图标来自 [Lucide](https://lucide.dev)（ISC 许可证，Copyright (c) Lucide Contributors）；Files 和 Review 里的文件、文件夹图标来自 [Catppuccin 的 VS Code 图标](https://github.com/catppuccin/vscode-icons)（MIT 许可证，Copyright (c) 2023 Catppuccin、Copyright (c) 2023 thang-nm）。Files 用 [uFuzzy](https://github.com/leeoniya/uFuzzy) 给搜索结果排序（MIT 许可证，Copyright (c) 2022 Leon Sorokin）。Review 用 [get-east-asian-width](https://github.com/sindresorhus/get-east-asian-width) 的表计算字符宽度（MIT 许可证，Copyright (c) Sindre Sorhus）。许可证与 Herdr App 相同，为 Apache-2.0。
 
 ## 更多
 

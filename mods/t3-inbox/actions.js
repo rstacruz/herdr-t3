@@ -1,8 +1,10 @@
-import { focused, run, shared, setShared, props, notify, openOverlay } from "herdr";
+import { focused, run, shared, props, notify, openOverlay } from "herdr";
 import { focusAgent, focusPane } from "./zoom.js";
 import { detailsFor } from "./details.js";
 import { placeOf } from "./project.js";
-import { openNapMenu } from "./snooze.js";
+import { t3Settings } from "./layout-settings.js";
+import { KEY } from "./store.js";
+import { pinList, unpin, putBack } from "./pins.js";
 
 // A snooze label: held when taken while it needs the person, so that need doesn't show it again (tree.js snoozeOf).
 const napLabel = (at, held) => `${at}${held ? ":held" : ""}`;
@@ -15,15 +17,8 @@ export function inboxActions(view, model) {
     view.hovered = null;
     detailsFor(view, null, cx);
   };
-  // Undo puts back only the pins it took, where they were: pins made since stay.
-  const repin = (before, took) => {
-    const current = [...(shared("agents.pins") ?? [])];
-    for (const p of before.filter((p) => took.includes(p) && !current.includes(p))) {
-      const next = before.slice(before.indexOf(p) + 1).find((q) => current.includes(q));
-      current.splice(next ? current.indexOf(next) : current.length, 0, p);
-    }
-    setShared("agents.pins", current);
-  };
+  // Undo puts back only the pins it took, where they were: pins made since stay (pins.js).
+  const repin = putBack;
   // Brought back, it's news again: the top of the list.
   const unsettle = (a, cx) => {
     away(a, cx);
@@ -37,22 +32,25 @@ export function inboxActions(view, model) {
   const moveOn = (xs) => {
     const cards = [...pinned, ...out, ...busyRows], i = cards.findIndex(viewing);
     if (i < 0 || !xs.includes(cards[i])) return false;
-    // With a Home in the layout, that's where it lands: what to look at next stays the person's to say.
-    if (props()?.home) { if (cards[i].mod) return false; run(props().home); return true; }
-    const next = [...cards.slice(i + 1), ...cards.slice(0, i)].find((a) => !xs.includes(a));
+    // With a Home in the layout, that's where it lands: what to look at next stays the person's to say; unless they chose
+    // the next card (t3.settings), and Home once none is left. Review goes back the tab bar's way (docs/adr/0007).
+    const home = props()?.home;
+    if (home && cards[i].mod) return false;
+    const next = home && t3Settings().afterAway !== "next" ? null : [...cards.slice(i + 1), ...cards.slice(0, i)].find((a) => !xs.includes(a));
     if (next) go(next);
-    return Boolean(next);
+    else if (home) run(home);
+    return Boolean(next || home);
   };
   // Undoing what took an agent off the screen brings it back, while Home is still where that left the person.
-  const bringBack = (a) => { if (a && props()?.home && focused()?.space === shared("t3-home.space")) go(a); };
+  const bringBack = (a) => { if (a && props()?.home && focused()?.space === shared(KEY.home)) go(a); };
   // Settling ends a snooze and a pin, as T3's. A mod pane closes, once the view has moved on from it.
   const settle = (xs, cx) => {
     const panes = xs.filter((a) => a.mod), kept = xs.filter((a) => !a.mod), seen = kept.find(viewing);
     for (const a of xs) away(a, cx);
     const naps = new Map(kept.map((a) => [a, { until: napUntil(a), held: napHeld(a) }]));
-    const before = [...(shared("agents.pins") ?? [])];
+    const before = [...pinList()];
     const took = kept.map((a) => a.address);
-    if (before.some((p) => took.includes(p))) setShared("agents.pins", before.filter((p) => !took.includes(p)));
+    unpin(took);
     let undone = false;
     for (const a of kept) {
       // Still at work, it's marked as settled mid-run: that run's end doesn't bring it back (tree.js).
@@ -104,10 +102,6 @@ export function inboxActions(view, model) {
   view.customSnooze = (answer, cx) => {
     const i = answer.lastIndexOf(":"), at = Number(answer.slice(i + 1)), a = every.find((x) => x.address === answer.slice(0, i));
     if (a && at > Date.now()) snooze(a, at, cx);
-  };
-  // Snooze… from a card's menu (t3-menu): the card's own snooze menu, as its clock opens it by keys.
-  view.snoozeAgent = (address, cx) => {
-    if ([...pinned, ...out, ...busyRows].some((a) => a.address === address && !a.mod)) openNapMenu(view, address, cx);
   };
   // The settle key: the agent in view, as its card's Settle (finished) or its settled row's undo.
   view.settleKey = (cx) => {

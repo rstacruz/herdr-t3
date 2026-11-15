@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 function element() {
-  const node = { items: [], handlers: {} };
+  const node = { items: [], handlers: {}, style: {} };
   const proxy = new Proxy(node, { get(target, key) {
     if (key in target) return target[key];
     return (...args) => {
@@ -16,6 +16,7 @@ function element() {
       else if (key === "on_hover" || key === "on_mouse_move" || key === "on_key_down") node.handlers[key] = args[0];
       else if (key === "id") node.key = args[0];
       else if (key === "pl" || key === "accessibility_label") node[key] = args[0];
+      else node.style[key] = args[0];
       return proxy;
     };
   } });
@@ -48,7 +49,7 @@ let sidebar = { id: "root", children: [{ id: "sidebar-lists", active: "lists" }]
 let props = { pane: "p2" };
 let pointer = { x: 50, y: 10 };
 const env = {
-  View: class {}, div: element, svg: element, image: (src) => { images.push(src); return element(); }, h_flex: element, v_flex: element, Popup: { new: (id, trigger) => element().id(id).child(trigger) }, keys: () => [],
+  View: class {}, div: element, svg: (src) => { const el = element(); el.svg = src; return el; }, image: (src) => { images.push(src); return element(); }, h_flex: element, v_flex: element, Popup: { new: (id, trigger) => element().id(id).child(trigger) }, keys: () => [],
   theme: () => ({}), props: () => props, panes: () => [pane, shell, review], shared: (k) => sharedValues[k] ?? null, home: () => "/home/me",
   terminals: () => terms, agents: () => agentList, spaces: () => [{ id: "s1", name: "project", tabs: [tab] }], layout: () => sidebar,
   run: (name, args) => calls.push([name, args]), openOverlay: (o) => calls.push(["overlay", o]), closeOverlay: (id) => calls.push(["close", id]), settings: () => ({ zoom: 1 }), setShared: (k, v) => { sharedValues[k] = v; },
@@ -66,11 +67,13 @@ function load(...files) {
   const src = files.map((f) => fs.readFileSync(f, "utf8")).join("\n")
     .replace(/^import .*;\r?\n/gm, "").replace(/export (function|const) /g, "$1 ").replace("export default class", "globalThis.Mod = class");
   const context = vm.createContext({ ...env });
+  // Load the real synced helper, including the alias main.js imports.
+  vm.runInContext("(() => {\n" + fs.readFileSync(path.join(__dirname, "button.js"), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "") + "\nglobalThis.drawButton = button; globalThis.radiusOf = radiusOf;\n})();", context);
   vm.runInContext(src, context, { filename: files.at(-1) });
   const mod = new context.Mod(); mod.init({}, cx); return mod;
 }
 const take = () => JSON.parse(JSON.stringify(calls.splice(0)));
-const parts = ["name.js", "tree.js", "tip.js", "focus.js", "list.js", "project.js", "program.js", "details.js", "main.js"].map((f) => path.join(__dirname, f));
+const parts = ["store.js", "name.js", "tree.js", "tip.js", "focus.js", "list.js", "project.js", "program.js", "details.js", "menu.js", "sidebar.js", "main.js"].map((f) => path.join(__dirname, f));
 const header = load(...parts);
 header.hovered = true;
 find(header.render(), "pane-head-p2").handlers.click({}, cx);
@@ -152,21 +155,34 @@ for (const word of ["working", "blocked", "done"]) {
 }
 delete sharedValues["review-pane.status"];
 
-// A settled agent's done dot goes in both sidebar modes.
+// A put-away agent's done dot goes in both sidebar modes; with the Inbox chosen, its header says it's put away, as its row does.
 props = { pane: "p2" }; pane.status = "done"; header.hovered = false;
 const dots = () => header.render().items.length;
+const svgs = (node, out = []) => { if (node && typeof node === "object") { if (typeof node.svg === "string") out.push(node.svg); node.items.forEach((c) => svgs(c, out)); } return out; };
+const mark = () => { const m = find(header.render(), "ph-mark-p2"); return m && [...svgs(m).map((s) => path.basename(s)), ...texts(m)].join(" "); };
 const shown = dots();
 terms[0].labels.settled = "1:1";
 assert.equal(dots(), shown - 1, "Lists hide a settled done dot too");
+assert.equal(mark(), null, "and say nothing of it: Lists have no Settled");
 delete terms[0].labels.settled; terms[0].labels.snoozed = String(Date.now() + 60000);
 assert.equal(dots(), shown - 1, "Lists hide a snoozed done dot too");
+assert.equal(mark(), null);
 delete terms[0].labels.snoozed; terms[0].labels.settled = "1:1";
 sidebar.children[0].active = "inbox";
-assert.equal(dots(), shown - 1);
-delete terms[0].labels.settled; terms[0].labels.snoozed = String(Date.now() + 60000);
-assert.equal(dots(), shown - 1, "snoozed too");
+assert.equal(mark(), "check.svg", "settled: Settle's check in place of the dot");
+pane.status = "idle";
+assert.equal(mark(), "check.svg", "idle and settled alike");
+pane.status = "done";
+delete terms[0].labels.settled; terms[0].labels.snoozed = String(Date.now() + 3 * 3600000 - 1000);
+assert.equal(mark(), "alarm-clock.svg 3h", "snoozed: the Inbox row's clock and time left");
+assert.equal(header.napping, true, "its time left is kept counting down");
+pane.status = "working";
+assert.equal(mark(), "spinner.svg", "at work, it says so first");
+assert.ok(!svgs(header.render()).some((s) => s.endsWith("alarm-clock.svg")), "and only that");
+pane.status = "done";
 terms[0].labels.snoozed = String(Date.now() - 1);
-assert.equal(dots(), shown, "woken, it is news again");
+assert.equal(mark(), "", "woken, it is news again: the dot");
+assert.equal(header.napping, false);
 delete terms[0].labels.snoozed;
 // A hidden Inbox doesn't clear the label, so the label alone can't say: a turn ended since it was settled is news.
 terms[0].labels.settled = "1:1"; terms[0].turn = 2;
@@ -196,9 +212,9 @@ delete terms[0].labels.settled; delete terms[0].turn;
 // The mode's owner closing ends the mode: a pane's × can close the pane it's on, and its timers go with it.
 {
   const owner = load(...parts);
-  sharedValues["t3-focus"] = owner.fs.me;
+  sharedValues["t3.focus"] = owner.fs.me;
   owner.close();
-  assert.equal(sharedValues["t3-focus"], null);
+  assert.equal(sharedValues["t3.focus"], null);
 }
 
 // The buttons come with the keyboard on the header, the stop that gets there, and only in keyboard mode.
@@ -207,11 +223,11 @@ delete terms[0].labels.settled; delete terms[0].turn;
   props = { pane: "p2" };
   assert.equal(find(quiet.render(), "ph-x-p2"), null);
   assert.equal(find(quiet.render(), "pane-head-p2").style?.tab_index, undefined);
-  sharedValues["t3-focus"] = "on";
+  sharedValues["t3.focus"] = "on";
   assert.equal(find(quiet.render(), "ph-x-p2"), null);
   quiet.fs.keyboard = true; quiet.fs.handles.set("pane-head-p2", { focus() {}, is_focused: () => true });
   assert.ok(find(quiet.render(), "ph-x-p2"), "the buttons show");
-  delete sharedValues["t3-focus"];
+  delete sharedValues["t3.focus"];
 }
 
 // Its sub-agents, all the way down: how many, or how many need the person, that opens their list.
@@ -232,12 +248,12 @@ terms.push({ address: "child", parent: "t2", state: "live", status: "working", s
   k.handlers.left({ bounds: { x: 300, y: 2, width: 40, height: 24 } }, cx);
   k.handlers.click({}, cx);
   assert.deepEqual(take(), [["overlay", { mod: "t3-pane", kind: "popup", width: 280, at: { x: 60, y: 30 }, props: { kids: "t2" } }]], "it opens the list, not the pane's focus; no height, so it grows and shrinks with its rows");
-  // The list, as the layout's menus: a heading with the counts, every one a step in for each level with its own status;
+  // The list, as the layout's menus: no repeated counts, every one a step in for each level with its own status;
   // a click or Enter peeks it and closes the list.
   props = { kids: "t2", overlay: "o1" };
   const menu = load(...parts);
   const list = () => menu.render();
-  assert.ok(texts(list()).includes("2 agents · 1 working · 1 needs you"));
+  assert.equal(list().items[0].key, "pane-kids-list", "only rows: the button already counts the sub-agents");
   assert.equal(find(list(), "kid-gone"), null, "an ended one isn't listed");
   assert.deepEqual(["kid-child", "kid-grandchild"].map((id) => find(list(), id).pl), [8, 24]);
   assert.equal(find(list(), "kid-child").accessibility_label, "child task, Working", "its own status: the row under it says what's stuck");
@@ -247,6 +263,17 @@ terms.push({ address: "child", parent: "t2", state: "live", status: "working", s
   assert.ok(texts(find(list(), "kid-child")).includes("1h"), "no status change yet: working since it was made");
   assert.equal(find(list(), "kid-grandchild").accessibility_label, "grandchild task, Needs you");
   assert.ok(texts(find(list(), "kid-grandchild")).includes("Needs you"));
+  const mark = (address) => find(list(), `kid-status-${address}`);
+  assert.equal(mark("child").accessibility_label, "Working");
+  assert.equal(mark("child").items[0].svg, "mods/workspace-chrome/spinner.svg");
+  assert.equal(mark("child").items[0].style.spin, 900, "the working mark spins as it does in Agents");
+  assert.equal(mark("grandchild").accessibility_label, "Needs you");
+  assert.deepEqual(texts(mark("grandchild")), ["!"], "blocked uses the same badge as Agents");
+  for (const address of ["child", "grandchild"]) {
+    const row = find(list(), `kid-${address}`);
+    assert.equal(row.style.h, 28);
+    assert.equal(row.items.at(-1).key, `kid-status-${address}`, "status has the last column");
+  }
   find(list(), "kid-grandchild").handlers.click({}, cx);
   assert.deepEqual(take(), [["close", "o1"], ["terminal.peek", { terminal: "grandchild" }]]);
   const keys = find(list(), "pane-kids").handlers.on_key_down;
@@ -275,10 +302,18 @@ terms.push({ address: "child", parent: "t2", state: "live", status: "working", s
     { address: "job-kid", parent: "job", state: "live", status: "idle", name: "docs", program: { key: "pi", agent: true }, labels: {} });
   assert.equal(find(list(), "kid-job"), null, "a shell isn't listed");
   assert.equal(find(list(), "kid-job-kid").pl, 8);
-  assert.ok(texts(list()).includes("3 agents · 1 working · 1 needs you"));
+  assert.equal(mark("job-kid").accessibility_label, "Idle");
+  assert.equal(mark("job-kid").items[0].style.border, 1.5, "idle uses a ring");
+  assert.equal(mark("job-kid").items[0].style.size, 6);
+  const jobKid = terms.find((k) => k.address === "job-kid");
+  jobKid.status = null;
+  assert.equal(mark("job-kid").accessibility_label, "Unknown");
+  assert.equal(mark("job-kid").items.length, 0, "no idle mark before its first status report");
+  assert.deepEqual(texts(find(list(), "kid-job-kid")).filter(Boolean), ["docs"], "no status text before its first report");
+  jobKid.status = "idle";
   props = { pane: "p2" };
   assert.equal(find(header.render(), "ph-kids-p2").accessibility_label, "3 sub-agents, 1 needs you");
-  // All of them ended with the list open: it closes on the next tick, not left as a heading over nothing.
+  // All of them ended with the list open: it closes on the next tick.
   props = { kids: "t2", overlay: "o1" };
   const left = terms.splice(-5);
   tick();
@@ -287,6 +322,20 @@ terms.push({ address: "child", parent: "t2", state: "live", status: "working", s
   assert.deepEqual(take(), [], "while there are some, it stays");
   terms.splice(-5);
   props = { pane: "p2" };
+}
+
+// Split, the panes beside the focused one recede, as T3's split terminals do, with no ring: their icon, name and folder a step
+// down, back up while hovered. What needs the person (its status mark) and the buttons don't.
+{
+  props = { pane: "p2" };
+  const step = () => ["ph-icon-p2", "ph-name-p2", "ph-folder-p2", "ph-mark-p2"].map((id) => find(header.render(), id)?.style.opacity);
+  header.hovered = false;
+  assert.deepEqual(step(), [0.5, 0.5, 0.5, undefined], "beside the focused one: a step down, its status mark as it is");
+  pane.focused = true;
+  assert.deepEqual(step(), [undefined, undefined, undefined, undefined], "the focused one as it is");
+  pane.focused = false;
+  header.hovered = true;
+  assert.deepEqual(step().slice(0, 3), [undefined, undefined, undefined], "hovered, it's back up");
 }
 
 props = { pane: "missing" };

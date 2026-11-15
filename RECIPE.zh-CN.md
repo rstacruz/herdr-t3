@@ -1,102 +1,360 @@
 # Herdr T3
 
-> 中文译本。给 agent 构建用的正本是 [RECIPE.md](RECIPE.md)，两者不一致时以英文为准。
-
-Herdr App 的一个安静、近似 T3 Code 的窗口，在 agent 越开越多时替你节约注意力。默认打开带 T3 式 Settle 的 Inbox：需要你的 agent 以卡片留在上方，工作中的折叠进 Working 收纳区，结束的等你手动 Settle，有新工作时自动回来。一键可切到 Lists（Spaces + Agents），其他机器上的 agent 也在同一个侧栏里，并标出所在机器。窄标签和带框窗格使用同一套名字和状态标记。动作控件类似 T3 的运行按钮，把你的命令放在标签栏：`▶` 重新运行上一条，在新标签或分屏里执行。可选的 Review 栏配合 pulls.review 使用，统计当前 worktree 待评审的内容，并在 agent 旁的窗格里打开。
+Herdr App 的一个安静、近似 T3 Code 的窗口，在 agent 越开越多时替你节约注意力。默认 Inbox 把需要你的 agent 留作卡片，工作中的折进 Working，结束的等你手动 Settle，有新工作时自动回来。Lists 则提供 Spaces + Agents。两者都包含其他机器，共用名字、置顶和状态标记。工作区有窄标签、带框窗格和 Actions 运行按钮；Files 和可选的 pulls.review 页共用右侧 space 面板。
 
 ![Herdr T3](preview.png)
 
 ## 你看到什么
 
-从左到右，分隔线 1px `border`：
+### 窗口与表面
 
-- **侧栏**（256px，同 T3，最小 208，最大 480；拖动边缘可调整宽度；`chrome` 背景），从上到下：
-  - **品牌栏**（40px，可拖动窗口，给 macOS 窗口按钮留位置）：macOS 窗口按钮之后照 Herdr 自带的 `main` 布局放官方 logo 和名字（`image("frame/welcome/herdr.png")` 20px、圆角 5、70% 不透明度，隔 8 是 `Herdr`，14px medium `muted`；悬停时两者都提亮）：一个 28px 按钮（内缩 6，圆角 8，悬停只提亮、不加底色），点击回 Home，在 Home 时和悬停一样提亮（Home 的标签栏是空的，窗格也可能是你自己放的，靠它说明当前位置），和 T3 一样没有悬停提示；空间不够时名字截断。logo 的可见方块离最后一个窗口按钮（右缘在 68pt）16pt；窗口按钮位于 `traffic_lights` [16, 12]，中线和栏的中线对齐。品牌栏随缩放变高，而 `traffic_lights` 是不乘缩放的屏幕坐标，Herdr 会从布局文件热加载它，所以在 macOS 无标题栏、非全屏时，`t3-chrome` 的品牌栏副本在缩放变化时把已安装的 `layouts/herdr-t3.json` 里的值改写成 [16, 12 + 20 × (缩放 − 1)]（每 250ms 检查一次，侧栏隐藏时也一样），让按钮留在栏的中线上。只在窗口显示名为 `herdr-t3` 的布局时写入（`shared("layout")`），换了名字的副本不改。文件里只改这一个值。写入失败会提示。仓库里的布局仍是 [16, 12]。右侧距侧栏边缘 8px，28px 按钮（圆角 8，16px 图标），同 T3 的标题栏和它的 `SidebarTrigger`：侧栏模式（图标是点击后切到的模式：Lucide 的 `inbox` 表示 Inbox，`layout-list` 表示 Lists）紧挨着，隔 12px 是隐藏侧栏。
-  - **列表**，二选一（stack）：
-    - **Lists**：Spaces 和 Agents，1:1 分割（各至少 90px）。Spaces：每个 space 的标记（见下）；worktree 折叠在所属仓库下，带树线；机器多于一台时按机器分组；名字后面只显示不寻常的 git 信息（`repo · branch ↑2 ↓1`，省略 `main` / `master`）。Agents：按 space 分组或按优先级（排序菜单），置顶的在 `Pinned` 组，子 agent 带树线缩进在父级下；按优先级和 `Pinned` 的分组标题照 T3、和 Inbox 的 shelf 及机器行一样：32px，比行边缘各缩进 2px、内边距 8，12px 淡色标签，常规字重的数量和箭头（展开朝下）在最右；按 space 的分组标题照 T3 的项目文件夹（`SidebarProjectFolderHeader`）：32px、上方留 8px，16px 的 space 标记和中粗名字，折叠时显示隐藏的数量和代表其中最紧急状态的 6px 圆点，右键打开 space 的 `t3-menu`；14px 状态标记靠右。
-    - **Inbox**：T3 侧栏。需要你的 agent 显示为卡片，底部是折叠的 Working、Snoozed 和 Settled 收纳区。Active 按回到你手上的时间排，Working 按本轮开始时间，Settled 按 Settle 时间，同时间按 address；停止工作的 agent 在 Working 多留 2 秒（blocked 立即离开，置顶或已 Settle 的不留），之后排到 Active 顶部；马上续跑、等你处理后再继续，都不挪位；查看卡片不改变顺序（见 `mods/t3-inbox`；[单独 mod 的 recipe](https://github.com/JinJieBeWater/herdr-t3-inbox/blob/main/RECIPE.zh-CN.md) 有完整说明）。
-      - 顶部一行，32px，内缩 8，下面隔 8 是第一张卡片。它的中线离窗口顶部 56px，和窗格标题行一样：标签栏 40，框线 2，再加 28px 标题的一半：Search 画成 T3 的 32px 搜索框（16px 图标，medium 14px 的 `Search`），但仍是打开 Go to 的按钮；之后隔 4px 是紧挨着的 28px 按钮（圆角 8，16px 图标）：space 过滤，它的菜单照 T3 的 combobox 从按钮左缘垂下，288 宽：圆角 8，内边距 4，32px 的行紧贴排列、圆角 4，搜索框 26px、下面一条分隔线，文字距图标 20，因此比名字靠左 4；然后是 New space 和 New tab。
-      - 卡片：同 T3，内边距 10/8、圆角 6，各行高 20、20、16，间隔 4 和 2，三行齐全时 78，卡片之间隔 5；当前查看、需要你处理或已完成时标题突出（`foreground`，medium），其余退后（`muted`，normal）；悬停只提亮颜色。程序图标（60% 透明度）和远程机器标记放在第三行行尾，没有第三行时放在标题行行尾。机器名在整张卡片的悬停详情中显示，机器标记不单独弹提示。
-      - 已 Settle 的行：同 T3，一行 36px，行间隔 1px（圆角 6，Show more 也一样），行首是项目的 16px 标记（和卡片的头像一样，未点亮时 40%），然后是标题和 Settle 后经过的时间；悬停时时间换成撤销箭头。Working 的行也是这样，不用 T3 的卡片：角落是 12px 的 `working` 转圈和这一轮已跑了多久（`9s`、`4m`、`1h 5m`；2s 宽限期内结束的显示 `circle-check`），工作中醒来的在旁边标 `Woke`；悬停时时间换成 Snooze 时钟（Review 的行没有）。收纳区标题：同 T3，32px，比行边缘各缩进 2px，计数为常规字重。
-      - 卡片和已 Settle 行的详情：同 T3 的线程卡片，用 `Popup` 挂在行右侧 4px、和行顶部对齐：标题，然后是项目、其他机器的名字、分支和程序，12px，最宽 320px。时序同 T3 的 tooltip 分组：第一张等 150ms；有卡片开着或刚关不到 400ms 时，下一张和行内控件的提示都立即出现；关闭没有延迟。第一张和最后一张在 150ms 内淡入淡出并滑动 4px（T3 的缩放做不到）；立即出现的没有，被它替换的那张在同一帧消失，同 T3 tooltip 分组的 `data-instant`，两张卡不会叠在一起。实色底加 `shadow_xl`：T3 的玻璃效果靠背景模糊，mod 做不到。行内控件点亮时淡出，指针离开控件所在的角落后回来，所以控件之间的空隙不会闪；点击这一行时淡出，拖动时隐藏。
-  - **底栏**（44px），同 T3：内缩 8、上方留 4，一排间隔 4 的 32px 纯图标按钮（圆角 8，16px 图标，悬停前为 `dim`）：Settings，以及打开官方 `machine-add` 的 server 图标；其后的空位放 Inbox 的撤销提示条（见下）；Herdr 下载好更新后，最右出现 32px 的 `Update` 胶囊（15% `accent` 底、12px `accent` 字），点击重启进入新版（`app.update`）。
-- **工作区**（`chrome`，窗格背后也是：在 `canvas` 不同色的主题里，窗格周围的 8px 否则会成为异色窄条）：
-  - **标签栏**（40px，可拖动窗口）：当前 space 的标签，照 T3 的面板标签：24px 高、12px 字、宽度取决于完整名字，放得下就全部显示；放不下时最长的先让步，当前标签降到 240px、其他降到 144px，再放不下就滚动；名字很短的标签至少 96px，比 T3 的宽（圆角 6，当前标签 `selected`）：12px 程序图标（没有程序时用终端图标）；然后是名字（没人命名的标签按下面的命名规则显示其中的 agent，没有 agent 就显示当前 pane），工作中显示转圈，blocked 显示 `!` 徽章，done 且未看显示 6px `done` 圆点，这些都在标签末尾的 16px 位置，悬停标签时由关闭 `×` 占据。这里和 T3 不同：T3 是图标变成 `×`，而图标是用来区分标签的，况且窗格头的关闭按钮也在右侧。然后各自占一个块，块宽跟着内容自动调整：你加了 Review 栏的话先是它（`pulls-review` mod，见 README），然后是动作控件（[t3-actions](https://github.com/JinJieBeWater/herdr-t3-actions) mod：`▶ <名字> | ▾` 外面一圈 24px 高、圆角 8 的 1px `border` 描边，没有动作时是 `+ Add action`），最后是标签栏末尾，距窗口边缘 12px：24px 的 `+`（圆角 8；`tab.new`：在当前 space 开终端标签，目录就是 space 标记和列表行显示的那个：第一个终端的目录，否则是创建时的目录。`shared/project.js` 的 `placeOf` 给所有新建标签用这一条规则：`+`、`cmd-t`、标签右键菜单和 New。Herdr 自带的 `tab.new` 会开在 space 创建时的目录），Windows 上再加 28px 窗口按钮。侧栏隐藏时，最左边出现侧栏开关，同时统计 agent：blocked、working、done。显示 Inbox 时（侧栏隐藏也一样），卡片负责通往各个 agent，所以标签栏只放当前工作周边的东西：当前 agent（看子 agent 时算它的顶层 agent；在不含 agent 的标签里算这个 space 最后看的 agent，只记在本次运行的内存里）排最左，然后是它的子 agent 的标签，再是不含 agent 的标签，保持原顺序。标签里只要有 agent 就算 agent 标签；只有不含 agent 的标签能拖动，且只在它们之间。标签和它的悬停提示都没有状态：什么需要人由侧栏来说。不显示隐藏了多少。这是两个模式唯一的差异：Lists 放这个 space 的全部标签和标记，只是已 Settle 或 Snooze 的 agent 不亮 done。`cmd-1…9`、上/下一个标签的键和滚轮都按显示的标签走（`t3-tabs.tab:<n>`、`tab-next`、`tab-prev`）。Herdr 把新标签开在当前标签右边，关掉当前标签时显示它的右邻，而被显示会消耗 agent 未读的 done，所以关闭不落在那里，Lists 和 Inbox 都一样：关掉当前 agent 的整个标签（或它是标签里最后一个窗格），选中 Inbox 时回到 Home，在 Lists 里和关掉不含 agent 的标签一样，回到这个 space 上一个显示过的标签；只关它的窗格且标签里仍有其他窗格（agent、shell 或 mod 都算）时留在该标签，由 Herdr 选窗格，不管窗格怎么没的（×、程序自己结束、直接 `pane.close`）；关掉不含 agent 的标签回到这个 space 上一个显示过的标签（`track()` 按 space 记录标签，最近显示的在前，这是标签栏唯一的记忆）。本 mod 发起的关闭（`×`、`cmd-w`、`cmd-shift-w`、窗格的 `×`、跳转里的 `ctrl-d` 及它们的确认框）在关闭会移除当前标签时先离开再关闭，右邻不会显示；确认框的命令是 `t3-tabs.close-tab-now:<id>` 或 `close-pane-now:<pane>`。右键菜单换成了 `t3-menu`（见下），它的 Close 也走这条路。无法抢先的（程序自己结束、Send back、space 关闭）在下一帧才走：Herdr 已经显示过它选的标签，窗口有焦点时还在同一步把里面的 agent 标成已看，mod 来不及插手。所以上一帧还未读、只是被这次选中才显示的 agent，要还它 done：离开视野、且已看的标签从 core 回来后，`payBack()` 写 `herdr.seen=<turn - 1>`，也就是 Herdr 自己的“标为未读”（`docs/labels.md`），并恢复被这次显示清掉的 Woke snooze，每次都经 `writeLabel` 写。写入失败时，欠账有效期内的每一轮都会重试，只有第一次失败会提示。3 秒后仍在视野里，说明人留在了那里，就算看过。右邻仍会一闪，done 标记会消失不到一秒。没有记录（比如重启后）或关闭的不是当前标签时，由 Herdr 决定落点。
-    - 标签的完整名字，悬停图标或名字且名字被截断或有状态时：一个悬停提示（12px，`chrome`，1px `border`，圆角 6），挂在标签下方 4px，文字起点和标签里的名字对齐，只有名字和状态文字，因为 `×` 盖住了状态标记（项目、分支和程序在侧栏和窗格标题栏里都有）。时序和 Inbox 行相同（`details.js`，t3-inbox 那份的副本）；按下标签、状态标记点亮或指针移到 `×` 时隐藏。名字完整显示时没有这个提示；T3 仍会显示，但只是重复一遍。`×` 有自己的悬停提示 `Close tab`，活动标签带快捷键，500ms 后才出现（同 Zed 的 tooltip），径直点击碰不到它。
-  - **窗格**（内边距 0/8，间距 8：窗格框从标签栏下沿开始，标签正好在窗口顶边和窗格之间居中），即当前标签：圆角 8，`background` 填充，聚焦边框 2px，默认关闭（`focus.color` 为 `background`，改成 `accent` 即显示；平时的边框也是 2px，颜色同 `background`，所以聚焦时终端不会变尺寸），单个窗格也带框。每个窗格顶部有 28px 标题栏：程序图标、agent 名或终端标题（14px 中粗，聚焦时 `foreground`；只是程序名时不显示，图标已经表明）、目录（再隔 12px）、有活着的子 agent 时的子 agent 按钮、状态标记，以及右分屏、下分屏、缩放/取消缩放、关闭按钮（悬停时出现；24px，圆角 8，14px 图标）。子 agent 按钮统计所有层级，照 T3 详情面板的 meta 按钮：不用图标，文字和 14px 向下箭头相隔 4，24px，内边距 6，圆角 6，12px 中粗，`dim` 色（`3 agents ⌄`）；有子 agent 需要你时改为用 `blocked` 色写出个数（`1 needs you ⌄`）。点击后照本布局其他菜单的样式列出它们，由本 mod 以 popup 打开（`props.kids`）：280 宽，高度随行数，打开期间子 agent 启动或结束时跟着变高变矮（打开时不传高度），全部结束后自动关闭；挂在按钮下 4px、右边对齐，同 agents 列表的排序菜单；四周内边距 4，`popover` 底，14px；顶部是排序菜单那样的标题（内边距 6/8，12px 中粗 `muted`，行高 16）写计数（`3 agents · 1 working · 1 needs you`），下面是菜单通用的 28px 行：圆角 4，内边距 8，间距 8，`foreground`，高亮用 `selected`，每层缩进 16。每行：16px 程序图标（同菜单图标，两侧各探出 2），右下角一个 8px 圆点表示它自己的状态，外圈 2px `popover` 色（`working`、`blocked`，否则 45% 的 `muted`）；名字；最后是右键菜单快捷键那一列的样式，12px 中粗 `dim`：工作中的显示已工作多久，用 Inbox 计时标签的等宽字体（`4m`，每秒刷新；取 `status_ms`，状态从启动起没变过时取 `created_ms`），需要你的显示 `blocked` 色的 `Needs you`，否则 `Idle`。最多显示 10 行，其余滚动。键或指针到达前不高亮；↑/↓、Home、End 和输入首字母移动，点击或 Enter peek 那一个（`terminal.peek`）并关闭列表，Esc 关闭。悬停一行时显示 agents 列表里子 agent 的那张详情卡（space、机器、分支、程序），因为列表在窗口右侧，卡挂在行的左边、顶部对齐；没有自己 pane 的，space 取父级的，不显示分支。Inbox 和 Lists 下都一样：卡片照 T3 不显示这些。排版和标签一致，所以标题的图标和第一个词对齐到第一个标签；最后一个按钮或状态标记（占按钮的 24px）对齐到标签栏的 `+`，距窗口边缘 12px。
-  - 底部留 8px；布局里有自带的 `workspace-status` 状态栏，但隐藏。
-- **新建菜单**（`t3-new-menu`，距顶部 96 的弹层，576 宽，高度随内容、最高 420，内容第一帧就显示：照 T3 淡入会让弹层先空白；`frame: "none"`，因为 App 的外框圆角达不到 T3 的 16，所以自己画外壳：圆角 16、1px `border`、`shadow_2xl`）：选一个 space 开终端标签（`tab.new`）；平台键加 `1…9` 按编号选 space，每行的提示按平台的叫法显示（macOS 上 `⌘1`，其他平台 `Super+1`，由 `tip.js` 的 `keyLabel` 转换）。当前 space 排最前，同一机器的 space 排在一起；列表最高 285px（T3 的 420 留给它的高度，不到 6 个 48px 的行），超过后滚动，滚动跟随高亮。行同 T3 的命令项（圆角 4）：上下各 6px，中间是 20px 标题和 16px 第二行，标记和标题对齐。每行第二行是目录，远程 space 前面加服务器图标和机器名，和 T3 标记远程 thread 的方式相同。底部 footer 上方一条 1px 分隔线，放按键提示（每个键一个 20px 键帽），右侧是 New space（`space.new`）：有多台机器时先选机器，和 T3 的 Add project 先选 environment 相同（未就绪的机器置灰且不可选，`← Spaces` 返回）。`⌘N` 不询问，直接用当前 space 的机器，所以 footer 只在无需询问时才标它。侧栏的 New space（Inbox 顶栏和 Spaces 标题栏的 `folder-plus`，旁边是同样的 `square-pen` New tab）直接打开这个菜单的选机器步骤（`openOverlay` 带 `frame: "none"`、`offset: 96` 和 `props: { pick: true }`，菜单由布局的 `newMenu` 指定）；只有一台机器，或单独停靠没有 `newMenu` 时，直接运行 `space.new`。
+用 Herdr 布局 JSON 和 mod API，外观取 T3 Code 的比例。保留用户主题、布局界面字体和窗口代码字体。预览的 Geist/Geist Mono、字号 12、zoom 1.1、minimum contrast 3 只是示例，不随安装写入。
+
+| 部分 | 几何与底色 |
+| --- | --- |
+| 侧栏 | 256 逻辑 px，最小 208、最大 480，外缘可拖；`chrome` |
+| 品牌栏／标签栏／面板头 | 高 40，可拖动窗口 |
+| 侧栏底栏 | 高 44 |
+| Lists 的 Spaces／Agents | 等分，各至少 90 |
+| 工作区 | `chrome`，包括窗格背后；左右内缩 8，窗格间距和底部留白 8 |
+| 窗格 | `background`，圆角 8，2px 同色边框；单个也带框 |
+| 窗格标题 | 除 Home 外常显，高 28，在框内 |
+| space 面板 | 最右全高列；初始隐藏，与工作区同权重、最小 480；外部分隔线可拖，左右和底部内缩 8 |
+| 分隔线 | 1px `border` |
+
+无标题栏，terminal opacity 0、padding `[8, 0]`。窗格聚焦边框也是 2px `background`，默认不可见且聚焦不改变终端尺寸；把布局的 `focus.color` 改成 `accent` 即可显示。分屏时非聚焦窗格的图标、名字、目录降为 50%，悬停恢复，状态和按钮不变。布局保留但隐藏自带 `workspace-status`。
+
+后续改尺寸、圆角、间距或颜色前读 [T3 token 基准](docs/internals/t3-tokens.md)：组件 token、按钮变体和有意不同于 T3 的地方以它为维护出处。
+
+### 侧栏框架
+
+品牌栏先给 macOS 窗口按钮留位置，再放官方标记（`frame/welcome/herdr.png`，20px、圆角 5、70%）和 `Herdr`（14px medium `muted`，间隔 8）。两者在悬停和 Home 时提亮；28px 按钮回 Home，无提示、不加悬停底色。放不下完整名字时整个隐藏，只留标记，不截成 `Her…`。右侧内缩 8 的 28px 按钮用 16px Lucide 图标切模式、隐藏侧栏。模式图标表示点击后去哪里：`inbox` 或 `layout-list`，隐藏按钮再隔 12。
+
+macOS 窗口按钮初值 `[16, 12]`，与品牌栏中线对齐，距标记 16 屏幕点。无标题栏、非全屏时未缩放的 Y 为 `12 + 20 × (zoom − 1)`；只调整安装后名为 `herdr-t3` 的布局，改名副本不动。侧栏隐藏或窄时标签栏给窗口按钮留位置；Windows 的 28px 窗口按钮在标签栏末尾。
+
+底栏内缩 8、上 4，放间隔 4 的 32px 图标按钮（圆角 8、16px 图标）：Herdr Settings 和布局 sliders 设置。空位放撤销提示。更新下载好后，右侧 32px `Update` 胶囊（12px `accent` 字、同色 15% 底）运行 `app.update`。
+
+### Inbox
+
+初始选中 Inbox。32px 顶行内缩 8：画成输入框的 Search 按钮，然后 space 筛选、New space、New tab（28px、16px 图标）。Search 打开 Go to，不在这里过滤。下面隔 8 是卡片。筛选弹层挂在按钮下左对齐，288 宽、圆角 8、内缩 4，26px 搜索框下有横线，32px 行、圆角 4。
+
+Pinned、Active 卡片在上，Working、Snoozed、Settled 有内容时是贴底的折叠收纳区；空间不够时跟在卡片后，共用滚动列表。标题高 32，比行内缩 2、内边距 8，12px 淡色名称、常规字重数量、12px 箭头。折叠仍露出当前查看的行，隐藏数量不计它。Settled 分页 Show more，有可关闭终端时有 Clear；Clear 先确认，保留当前标签。
+
+卡片圆角 6、横竖内边距 10/8，三行高 20、20、16，间隔 4、2，齐全时高 78，卡片间隔 5。首行 space 标记／名字与状态／时间（Working 加时长、Needs you、Done，否则经过多久），第二行 agent 标题，可选第三行分支、中间截断。60% 程序图标和远程机器标记在分支行末尾，没有则在标题末尾。正在看、需要人、done 的标题为 medium `foreground`，其余 normal `muted`；悬停只提亮、不移动。工作中卡片平时 70%，悬停或正在看时恢复。置顶卡片在 space 头像后带 pin。
+
+Settled、Snoozed 是 36px 窄行，圆角 6、行间隔 1：16px space 标记（未亮时 40%）、标题和已经过／剩余时间。悬停把时间换成 Un-settle 或 Wake。Snoozed 带 `accent` 闹钟；Woke 是 `blocked` 文字，悬停后仍留在控件旁。控件和状态在角落交叉淡变，不重新排版。
+
+悬停详情：标题、space、远程机器、分支、程序，12px、最宽 320、实色加 `shadow_xl`，挂在行右侧 4、顶部对齐。首次等 150ms，另一张刚关不到 400ms 时立即出现。第一张／最后一张 150ms 淡变并滑动 4px，立即替换不重叠。控件所在角落整体抑制详情；点击收起，拖动隐藏。程序、pin、机器标记没有单独提示。
+
+### Lists
+
+Lists 分成 Spaces 和 Agents。两者标题高 32，与 Inbox 顶行对齐；按钮 28、图标 16。Spaces 列表在标题下 4 开始，行高 32、行间隔 1、内边距 10、间隔 10，16px space 标记加中粗名字。多于一台机器时按机器分组；空机器有 `New space here`。只显示不寻常 git 信息（`repo · branch ↑2 ↓1`，省略 `main`／`master`），worktree 带树线挂在仓库下。
+
+Agents 行高 36、圆角 6、行间隔 1、内边距 10、间隔 10，16px 程序槽。正在看和需要人的醒目，其余悬停前淡显，working 70%。状态前显示持续时间（`<1m`、`5m`、`3h`、`2d`，12px），悬停 150ms 交叉换成 pin。行内不放机器标记，机器在同 Inbox 的详情卡里。
+
+可按 space 或优先级排序，两种都有共用的 Pinned。优先级标题用收纳区的 32px 样式；space 标题用项目文件夹样式，上留 8、16px 标记、中粗名字，可右键 space 菜单。折叠时显示隐藏数量和紧急状态，仍露出正在看的行。父级折叠箭头在时间前，默认折叠，带淡色隐藏数量；blocked／error 子 agent 仍缩进一级显示。自己有 pane 的子 agent 只在父级下显示一次，置顶除外。子 agent 也有详情卡，space 取父级，自己有 pane 时才显示分支。
+
+侧栏右缘保持两列：12px 折叠箭头中线距边 22；机器 `+` 是 24px、14px 图标，中线距边 50。
+
+### 标签栏
+
+标签高 24、圆角 6、字号 12，当前为 `selected`。Lists 显示当前 space 全部标签：12px 程序／终端图标、名字，末尾 16px 状态槽，悬停换成 16px 关闭按钮、12px `×`。短标签至少 96px。放得下就显示全名；放不下时最长的先让步，当前降到 240、其余 144，再放不下就滚动。两种模式被裁的一端都在 16px 内渐隐。只在当前标签或可用空间改变时，以最小移动保持当前可见；滚轮滚开的不拉回。
+
+Inbox 左边改成面包屑：space／适用时的父级／当前查看的 agent，14px medium、间隔 12、淡色斜线。space 是 `muted`、当前 agent 是 `foreground`；与父级分屏的子 agent 再隔斜线跟在后面。同标签的同级 agent 不另造切换器，用卡片或 pane 进入。右边是按图标名字收紧的工具标签，不设最小宽度或状态槽，悬停 `×` 替换图标。顺序：当前标签被 zoom 藏住的非 agent pane、当前家族其他标签、不含 agent 的标签，非空组间用 16px 高细线分开。面包屑已写的当前／父级标签不重复。
+
+面包屑先取完整宽度，最宽到整行；靠右工具条让到零宽，保持末端可见，滚轮移动、被裁边渐隐。面包屑可用宽不足 360 时父级变 `…`，只有面包屑本身超出整行才截名字。截断的名字、或 Lists 有状态的标签，下方 4px 有 12px 提示，文字起点对齐；全名已显示就不重复。Inbox 提示没有状态。关闭提示等 500ms，只有当前标签附快捷键。
+
+多 pane 标签进入 Herdr 原生 zoom 后，标签变为高 24、圆角 6、虚线框的分段组：每 pane 一段图标名字，被 zoom 的为 `selected`、最宽 240，其余最宽 144。Lists 在组末尾保留状态，组没有关闭、标签菜单或拖动。Inbox 的 agent 仍在面包屑，工具段只含非 agent pane。用 pane 缩放按钮或 `cmd-shift-enter` 恢复分屏，标签栏不重复放按钮。
+
+标签后是各自定宽的 Actions、可选 Review 栏、末尾。Actions 是高 24、圆角 8、一圈描边的 `▶ <名字> | ▾`，或 `+ Add action`。Lists 末尾有 24px `+` 新标签，Inbox 改用面包屑 space。24px `panel-right` 面板开关打开时 `foreground` 加 `selected`。只保留一份开关：Review 栏有 `toggle` prop 时由它画。最后普通控件的方框距窗口边 12，与 pane 控件对齐（Windows 窗口按钮距边 2）。工作列窄于 1024 逻辑 px 时 Actions 隐去文字，无 toggle 的 Review 栏隐去计数文字。侧栏隐藏时左侧出现开关，按所选模式统计 blocked、working、未读 done。
+
+### 窗格与子 agent
+
+标题依次是程序图标、有意义的名字（14px medium）、隔 12 的目录、子 agent 按钮、状态、右／下分屏、zoom／还原、关闭。控件 24、图标 14，悬停或键盘聚焦时显示。名字只是程序名时省略。Inbox 里单独显示或 zoom 的 agent 名已在面包屑，标题不重复；分屏保留。Inbox 标题用 14px `dim` 勾标已 Settle，用 12px `accent` 闹钟加剩余时间标 Snooze；working/blocked 优先。Lists 不画这两种收起标记。首图标文字对齐首标签，最后控件／状态距窗口边 12。
+
+子 agent 按钮统计所有层级活着的 agent：`3 agents ⌄`，或 `blocked` 色 `1 needs you ⌄`；高 24、12px medium、内边距 8、14px 箭头、圆角 8。弹层宽 280，在下方 4、右对齐，内缩 4、28px 行、无标题，超过十行滚动；随启动／结束改变高度，全结束就关闭。每层缩进 16。行含程序图标、名字、工作时长（`4m`、每秒更新）／`Needs you`／`Idle`，以及自己的 12px 转圈／徽章或 6px idle 环；首次状态上报前无状态文字／标记。行表示自身状态，按钮和 pane 状态汇总子树。点击／Enter 用 `terminal.peek` 并关闭，详情卡向左打开。纯跑命令的 shell 不算子 agent。
+
+### space 面板与 Files
+
+只有一个右侧面板，跟随当前 space，跨标签固定。开关／页面／放大按 space（包括 Home）各记，未用过的默认关闭；宽度整个窗口共用。40px 固定头列出 `panel-body` 里实际有的页：Files，加上装了才有的 Review。页签高 24、圆角 6、12px 字、14px 图标，当前 `selected`；右侧 24px 放大／还原、关闭隐藏或恢复工作列。Review 用 pulls.review 原色标记，未悬停／选中时 70%，并跟随该 space 分析状态。面板关闭时状态移到标签栏开关的图标左侧，不叠角标、不重复。
+
+两页是同一张圆角 8、`background` 卡片；每页一条 40px 透明全宽工具栏，下面内容左、唯一导航列右；只靠细线分开，不换底色，代码行号栏也同色。加载是居中 14px 转圈加状态文字；空态是居中 24px 图标、13px medium 标题、12px 淡色提示、间隔 8；读取失败在工具栏下用 11px `ansi1` 错误条叠 `18` 透明底，带 Retry。空态也保留工具栏。
+
+每页独立记导航开关／宽度、Wrap／Scroll。导航默认开、宽 256、最小 160、最大 560，内容至少留 256；左 6px 拖动区、40px 列头，不按断点重排。工具栏末尾 `folder-tree` 开关为 24px ghost，开时高亮。宽度稳定 300ms 才重排。切页只恢复自己的文件和阅读位置，没有跨页打开／定位。
+
+Files 只读，根是 space 所在机器的 `folder`，不跟终端 cwd。未选文件时工具栏只显示根名，选中后是路径面包屑，点目录在树里定位。Markdown 可 Preview／Code，其他文本是只读语法高亮 Editor，图片是预览。长行默认换行，`text-wrap` 切 Scroll，与 Review 独立。工具栏 24px ghost 按钮间隔 4，首字内缩 16。导航列头有 Search files、Collapse all／Expand all；全部展开最多列 200 个目录，Git 忽略的保持折叠。
+
+共用树：行高 24、12px 界面字、圆角 6、内缩 2、每层 27.2、12px 箭头、16px Catppuccin 图标；悬停文字色 7%、选中 12%。单目录链压成 `a / b`。先目录后文件，不分大小写自然排序（`file2` 在 `file10` 前）；省略 `.git`、忽略项变暗。改动用 Review 色标 A／M／D／R，删除划线，含改动的折叠目录带点。虚拟列表只画可见行，不截前 N 个。方向键（←／→ 收起／到父级、展开／进入）、Home／End、Enter 移动 1px 环并打开所在行。
+
+搜索要求空格分开的每个词都在路径中，不分大小写。最多显示 200 行并提示超出数量。在 Git 内搜索引和未跟踪非忽略文件，外部最多 20 万路径；远程过滤最多回传 1,000。不超过 1,000 候选时用 uFuzzy 排序高亮；↑／↓、Enter、Esc 同其他搜索列表。
+
+仅本页、space、窗口都可见才刷新：回来立即读，通常本机每 5s、远程每 10s，慢读取延长。文本只在变化时重读，图片重新点选才刷新。太大、二进制、缺失、非 UTF-8 是带文件名说明的空态；真正的读取／列目录失败用 Retry。远程图片上限 512KB，文本先检查大小／NUL。完整内容和 Editor 只保留最近显示的三个 space，更早只留轻量阅读选择，回来重读。
+
+文件／目录右键：Copy path（远程带机器）、Copy relative path、Mention in agent，本机另有 Reveal in Finder，文件还有 Open in default app。Mention 发给该 space 当前查看的 agent，粘贴 `@<相对路径> `，150ms 后恢复原文本剪贴板；非文本剪贴板不动，提示改用复制路径。目录没有默认程序打开项。
+
+### 可选 Review 页
+
+Review 用于 [pulls.review fork](https://github.com/JinJieBeWater/pulls.review/tree/multi-repo)，CLI `jin.review`，只支持本机仓库，跟随 space 的 folder。40px 工具栏：范围、分支比较或 commit SHA／前后、Analyze、折叠菜单、设置、导航开关；24px ghost、12px 字、14px 图标。非仓库／远程只写 `Review`，导航禁用；范围无变化写 `No changes`。
+
+范围菜单是带数量的 Changes、Uncommitted、Outgoing、Incoming（0 保留并禁用），分隔线后是可搜索 Commits 子菜单（列表最高 320）。分支范围显示 `head → base`，窄于 640 时 `vs base`；单 commit 显示短 SHA、`‹ ›`。Changes 另有宽 36–192 的比较目标按钮，打开 288 宽可搜索 popover，BRANCH／REMOTE 分区、28px 行、列表最高 256。搜索时不列 Automatic。本地分支不含 head，配同名远程（origin 优先）和 22×14 远程开关，再列最多 200 个最新远程独有分支、不含 HEAD；默认分支先、其余按新到旧。选择 base 打开 `base...head`，不分析；拨远程开关不关菜单。base 按 space 保存，Changes 数量和 Commits 随它。
+
+有两个及以上组时，工具栏下是一行横贯 diff 和树的组页签，四周 8、下有线，横滚不换行。规则组和 AI 组都显示。圆角 8 描边页签两行，横竖内边距 8/2、间隔 6：上面 14px 类别图标、12px medium 名字和 critical，下方 11px 增删／文件数，已看后有 14px 进度环。当前组 12% 选中，其余悬停 7%；全二进制不画无意义的行数分隔点。点组让 diff 和树从顶部显示它。AI 组说明在 diff 顶部（13px medium 标题、12px muted、最高 160），规则组模板文字省略。
+
+树只列当前组的目录／文件，再列子组，每子组一行 24px、类别／名字／critical／数量／已看。子组默认开、目录默认折叠；不把子组合并进唯一目录。点子组展开并滚到它的组头。文件顺序同 Files，diff、行请求、`j`／`k` 也沿用。唯一当前文件由点击、j/k、或 diff 视口顶部的文件决定；跳转展开上级。已看框在 chevron 槽后、图标前，目录／子组三态，删除文件留空槽；已看文件划线变暗。右键在共用菜单后加 Mark reviewed／Mark unreviewed；组无菜单。
+
+只有代码和 hunk 头用窗口代码字体。换行后每行高 20，Unicode 宽字、组合符号、连接序列保持字形和安全断行；设置 Lines: Wrap／Scroll 与 Files 独立。二进制只显示 `binary` 文件头，不请求行。吸顶文件头保持不透明，主题勾选框缩透明度时保留原 alpha。Review 可见时每 15s 刷新，回来立即补读；完整数据／行／布局缓存只留最近三个 space，分析状态仍是轻量、按 space。只有点 Review 栏数量才自动分析；本布局的纯开关栏没有计数也不读 Git，所以在页内选范围、Analyze。Language／Agent／Model 是设置子菜单，选中只关子菜单。
+
+### 弹层、对话框与 Home 外观
+
+New、Go to 是顶部居中 popup，offset 96、宽 576、随内容最高 420、圆角 16、1px border、`shadow_2xl`，内容首帧就出现。两行条目高 48：标题 20、第二行 16、上下 6、圆角 4。带顶线的 footer 用高 20、圆角 4、12px medium 键帽。Go to 的无框搜索高 36、上下 6；New 列表最高 285，Go to 313，都随键盘高亮滚动。
+
+普通菜单 `popover`、圆角 8、border、内缩 4，28px 行、圆角 4、14px 字、16px 图标。右键菜单在指针处，宽 220、最高 260；控件菜单下挂 4，朝窗口内侧的边对齐。提示 12px、最宽 320、圆角 6，通常在上，顶栏控件在下。主按钮 `solid/solid_foreground`、次按钮 `raised/input`，破坏性确认在次按钮上用 `ansi1` 字。禁用保留颜色、整体 64%、无悬停／点击；有底色按钮悬停 90%。Ghost 在 chrome 用 hover/selected、卡片用文字色 7%/12%，侧栏行控件只提亮，标签关闭用 `raised`。
+
+Actions 编辑器和确认框宽 512、圆角 16、高随内容、内边距 24、20px 半粗标题、32px 字段按钮、圆角 8。确认标题可换行，Cancel 在执行动作 Close／Delete／Confirm 前；执行按钮红字 raised 底、不填红块，底部 bare 无横线。Custom snooze 宽 384，同外壳但 footer 有横线。布局设置特意跟 Herdr Settings 而非 T3：880×620、190px 左导航、`Herdr T3` 标题和 Home 分区，右页内缩 28/22，14px 标题、12.5px 淡色说明、分隔线、220×32 select。
+
+Home 是一张带框无标题的 pane，不是 agent 看板。默认正中三个按钮，最宽 320、高 32、圆角 8：Next agent（没地方去就禁用）、Go to、New tab，左 14px 字、右键帽，无名字或计数。按钮组下补 40，让其相对整个面板居中。Home 标签栏无 tab、`+`、Actions、Review；整行从 40 收成 8，除非需要放隐藏侧栏控件／macOS 窗口按钮或 Windows 窗口按钮。离开恢复 40。到达 Home 第一帧就是无标题框和它自己的面板状态。
 
 ## 它怎么表现
 
-- **终端地址**：窗格的右键菜单（标题栏或终端上右键）有 `Copy address`，地址写在快捷键的位置（`t2`），程序改了标题也能告诉 agent 是哪个终端；mod pane 没有这一项。标题栏不显示地址。侧栏不显示，那里的宽度留给名字。
-- **跳转**（`t3-picker`，由自带 `picker` 经 `mod.clone` 得来；`cmd-p`，以及 Inbox 的 Search，经它的 `picker` prop），画法同新建菜单，即 T3 的命令面板：距顶部 96 的弹层，576 宽，高度随内容、最高 420，`frame: "none"`，同样自画圆角 16 外壳，不淡入；无边框搜索框高 36px、上下各 6px，下面直接是列表，不加标题（只有一种行），48px 两行的行，超过 313px（约 6 行半）后滚动，滚动跟随高亮；底部 footer 放按键提示（`↑ ↓` Navigate、`Enter` Go、`⌃D` Close pane、`Esc` Close），右侧是 New tab（打开 `t3-new-menu`）。一行是一个窗格而不是一个标签：每个窗格都有一行，agent、程序、shell 和 mod 窗格都在，当前 space 的在前，然后是同一机器的，顺序同新建菜单，各自按标签顺序。一行：space 标记（16px），按命名规则得出的名字（同窗格标题），下面是程序图标和程序名（`panes()` 的 `program` 跟随前台程序：从 shell 启动的 lazygit 就是 `lazygit`）、远程时的服务器图标和机器名、space 名，有活着的子 agent 时显示 `+n`；右侧是状态标记，规则和标记同窗格标题（已 Settle 或 Snooze 的 agent 不显示 done 圆点，Inbox 和 Lists 都一样）。标签名不单独成行：没人命名的标签名只是位置（"4"）或最初的名字，不代表里面在跑什么。输入时，窗格按 space 名和机器名、有人命名过的标签名、它的名字、程序名和 key、目录匹配；高亮移到第一个匹配。回车或点击用 `pane.focus`（可跨 space）；ctrl+d 通过 `t3-tabs.close-pane:<pane>` 关闭窗格，有程序在运行时先确认。从这里跳走时离开的窗格记在 `shared("t3-picker.back")`；它还在且没有聚焦时，第一行回到它（右侧显示 `↩ Back`），空查询打开时选中它，所以 `cmd-p`、回车就能来回切换；否则打开时选中当前聚焦的窗格。只记从这里的跳转，在别处点击不算。不列没有窗格的终端。
-- **Space 标记**，照 T3 Code 画项目的方式（`ProjectFavicon`），写在 `shared/project.js`，t3-inbox、t3-agents、t3-picker、t3-spaces、t3-new-menu、t3-tabs 和 t3-menu 各放一份副本：优先用项目自己的图标（Inbox 卡片、Spaces 和 New 16px，圆角 25%），照 T3 的方式在 space 当前所在位置（第一个终端的目录，否则是创建时的目录）的仓库根目录查找：先按顺序找 T3 的常见文件（`favicon.svg`、`public/favicon.ico` … `.idea/icon.svg`；不含 `.icns`），再看页面里的 `<link rel="icon">` 或路由里的 `{ rel: "icon", href }`。找到后复制到 `cache/t3-icons/`（图片只能从 App 目录显示；按内容命名），通过 `space.icons` 共享；找到的 10 分钟后重查，没找到的 1 分钟后重查。没有图标就用文字头像：和 T3 的两个字母不同，只取名字的第一个字母或数字并大写（`herdr-t3` → `H`，`智能算量` → `智`），粗体等宽，字号是标记的 8.25/16，同 T3，颜色按名字从 T3 的 18 色里哈希取（暗色主题用 Tailwind 400，亮色用 600），底色是同色 14%。名字里没有可拼的字（`~`）时显示文件夹。`space.colors` 也写入同样的颜色（600），给官方的 picker 用。
-- **名字**，各处（Inbox 卡片、agents 列表、标签、窗格标题）一条规则，写在 `shared/name.js`，用到它的 mod 各放一份副本：Pi 在跑时先用 Pi 会话名（`pi.session` 标签）；agent 再看有人命名过的标签名，但子 agent 不用，标签里有另一个顶层 agent 时也不用（否则会重名，Herdr 自带的 agents 列表也不再这样）；然后是有意义的终端标题（不跑 agent 的终端上带 agent 标记的标题是残留的，比如 Pi 之后的 lazygit，不算；按程序只去掉该 agent 自带的标记：Pi 的 `π - … - <目录>`、OpenCode 的 `OC | `；不是路径、不含 `user@host`、不是程序自己的名字、不只是目录名或 space 名，比如 Codex 和未命名的 Pi）；最后是程序名。
-- **agent 状态**，各处（agents 列表、标签、窗格标题、Inbox 卡片）标记一致：working：`working` 色转圈；blocked：14px 圆角 `!` 徽章，底色为 15% 不透明的 `blocked`（Inbox 卡片上 16px，agents 列表里 12px，同 T3 的单行）；done：6px `done` 圆点（Inbox 里是绿色 `Done`）；idle：agents 列表里是圆环，其余位置不显示。父级连同仍在运行的子 agent 一起判断，规则写在 `shared/tree.js`，用到它的 mod 各放一份副本：自己或任一子 agent blocked 即 blocked（失败结束的一轮，即终端状态 `error`，视为 blocked：`agents()` 没有这个状态，从 `terminals()` 读）；否则自己有未读的 done 即 done；否则自己或任一子 agent working 即 working；否则用自己的状态。子 agent 的 done 是父级的消息，不算它自己的。子 agent 指它下面活着的、本身是 agent 的终端，标准同 `agents()`：会报告状态，或程序表标为 agent；agent 用来跑命令的 shell（`hc run --bg`）不算，但那个 shell 启动的 agent 算。窗格标题的子 agent 计数和列表、agents 列表的子 agent 行和折叠数量、跳转的 `+n` 都按这条。
-- **隐藏副本做不了什么**：隐藏的 stack 子节点或列里的 mod 不绘制，也收不到 `<mod>.<command>`，只有定时器还在跑，而且第一次显示后才启动。所以 Inbox 和 agents 列表的行不在 `render()` 里算，而在一个每秒也由定时器运行的方法里算，`setAgentOrder` 只由选中的模式写：隐藏侧栏时选中的模式继续生效。别人依赖的规则不能只靠 Inbox 执行：读 `settled` 标签的都按 `tree.js` 的 `stillSettled` 判断（正忙或之后又结束过一轮就不再算已 Settle），时间取标签的 `changed_at`，不取列表上次绘制的时刻。必须随时可用的键交给一直显示的 `t3-tabs`；子树失败或查看时开始新一轮，也由它结束 Snooze。
-- **侧栏模式**：品牌栏按钮或 `cmd-shift-b`（`t3-tabs.sidebar`，隐藏侧栏时也能用，且不会展开侧栏）对 stack `sidebar-lists` 执行 `layout.select`（`lists` / `inbox`）。两个模式共享事实（名字、置顶、`settled` 和 `snoozed` 标签的含义）；Inbox 处理注意力的规则（Settle、回 Home、Snooze 藏起工作中的 agent、空间筛选）只在选中它时生效：见 `docs/adr/0002-inbox-rules-stay-in-inbox.md`。侧栏开关的计数按所选模式显示的来算：两个模式都不计已 Settle 或 Snooze agent 的完成圆点；选中 Inbox 时，工作中的 Snooze agent 也不计入，直到醒来或需要你。
-- **动作**：[t3-actions](https://github.com/JinJieBeWater/herdr-t3-actions) mod，详见它自己的 recipe。和 T3 Code 的项目动作一样，但是全局的：主动作是上次运行的那个，没有就是第一个。`▶` 运行它；菜单里点一行就运行那个动作并把它设为主动作；齿轮打开编辑器，即 T3 的对话框：512 宽，高度随字段，`frame: "none"`，自画圆角 16 外壳，内边距 24，20px 半粗标题，32px 关闭按钮距角 8，字段和按钮高 32、圆角 8。运行用 `terminal.open { argv: ["sh", "-c", command], name, place, folder? }`：每次都新开标签或右/下分屏，以动作名命名；命令结束后 shell 保留。没填目录时在当前终端的目录启动；焦点在 mod pane 上时（比如 agent 旁边的 review），用同一标签里终端的目录，再没有就用 space 的目录；`~` 会展开。动作存在 `shared("t3-actions")` = `{ list: [{ id, name, command, icon, place, cwd? }], last }`，Herdr 重启后仍保留。
-- **Worktree**，照 T3 的项目按仓库分组，关掉 checkout 也不会散开：挂在 checkout 的行下；checkout 没开且有两个以上时，挂在一行代表它的暗色行下，位置是第一个 worktree 原来的位置（只有一个时仍是普通行，显示 `repo · branch`）。它和 checkout 一样有折叠箭头，但没有标签可切，所以点击用 `space.new` 打开 checkout，连点也只开一次（裸仓库没有可打开的目录，点击改为折叠）。checkout 接替暗色行的位置，分组不会挪动。它不是 space，所以 `space.next` / `space.prev` 和 `ctrl-1…` 会跳过它。折叠状态按仓库保存，两种情况通用。折叠后仍显示当前所在的 worktree，同 T3 的 route row，数量不计它。
-- **Spaces**：标题栏 32px，和 Inbox 顶部一行等高，切换模式时不跳；行照 T3 的项目行：32px，行间隔 1px，内边距 10，间距 10，16px 标记和中粗名字。单击切换，右键打开 `t3-menu`；拖动排序，移动 6px 才开始：这一行（checkout 连同展开的 worktree）以 `selected` 底色和大阴影抬起，跟随指针上下移动，其余行在落点让位，只在同一台机器内（worktree 只在同级之间）。松手后滑到落点并执行 `space.move`，在模型回传前保持这个顺序；离开列表或按 Esc 则放回原处（只在拿起期间列表持有键盘，之后还给当前聚焦的窗格；其他时候点击列表不改变键盘所在位置）。有 worktree 的 checkout 在行尾显示折叠箭头，和父 agent 一样（折叠后箭头前带淡色数量），和机器行、Agents 分组的箭头同列。侧栏右边只有两列图标。所有折叠箭头都是 12px，同 T3 收纳区和文件夹的箭头，排在标题行最右那个按钮正下方，中线离侧栏右边 22px。机器行的 `+` 是 24px、14px 图标，排在标题行第一个按钮正下方，离右边 50px。列表从标题行下方 4px 开始，所以品牌栏、标题行和第一个机器行之间都隔 36px。没有 space 的机器有一行 `New space here`，按 space 行排版。space 的实际顺序跟随这些行，折叠的也算（`space.move`），所以 `space.next` / `space.prev` 和 `ctrl-1…` 按列表显示的顺序走。读 git 时不扫未跟踪文件（`--untracked-files=no`：大仓库里这部分占了大半磁盘开销），只在 git 可能变化时读取（新位置、命令或轮次结束、机器重新连上），窗口在前台时另有慢速兜底轮询。
-- **Agents**：行照 T3 的单行：36px，行间隔 1px，圆角 6，内边距 10，间距 10，16px 图标。照 T3，正在看的和需要你的醒目，其余变淡直到悬停，工作中的 70% 不透明度。和 T3 的单行列表一样，行内不显示机器标记；悬停整行时旁边出现和 Inbox 行相同的详情卡，其中显示机器名；子 agent 行也有，space 取它所属的 agent，自己有 pane 时才显示分支。单击执行 `agent.focus`，Inbox 卡片相同。和 Herdr 自带的 agents 列表一样，每行在状态前显示当前状态持续的时间（`<1m`、`5m`、`3h`、`2d`，12px），悬停时这个位置（T3 的角落：24 高，至少 32 宽）换成置顶按钮，两者 150ms 交叉淡变（布局不动）；父级在时间前显示折叠箭头（默认折叠，折叠后箭头前带淡色数量）；blocked 或出错的子 agent 仍显示在它下面，缩进一级。自己有 pane 的子 agent 也算 Herdr 的 agent，只在父级下面显示一次，置顶时除外。已结束 agent 的折叠记录会被清掉。你正在看的 done agent 留在 Done 组，直到你离开。照 T3 的 route row，折叠的分组仍显示当前查看的行，数量不计这一行；查看被折叠的子 agent 时点亮父级。排序菜单在按钮下方 4px、右缘对齐，150ms 淡入，行高 28px，按键或指针到达前不高亮；和所有弹窗一样，再点按钮会关闭它。取消置顶的图钉按钮走 `t3-tabs.unpin:<address>`，所以会留下撤销提示条（见下）。已 Settle 或 Snooze 的 agent 和标签栏一样只去掉完成圆点，工作中照样转圈，在顺序里留在原位，不单独分组，也不加按钮：Settle 和 Snooze 都只在 Inbox 里操作。
-- **Home**：收起当前查看的 agent 后的落脚点，所有项目和机器共用一个，下一步看什么由你决定。无论用哪种方式 Settle 或 Snooze 这个 agent（按键、按钮、拖动、划选），都回到这里；Review 则回到打开它之前的地方（见 Inbox：mod pane 卡片）；关掉当前查看的 agent 的整个标签（或最后一个窗格），选中 Inbox 时也会回到这里（Lists 里回到这个 space 上一个显示过的标签）；只关它的窗格且仍有其他窗格时留在该标签（见标签栏）。收起或关闭后台 agent 不跳转。Herdr 启动时回到上次的位置。`cmd-shift-h` 或品牌栏的 Herdr logo 可随时进入；已在这里时再按不变。还在这里时 Undo 会带回那个 agent；去了别处后只恢复状态。在这里按 `cmd-]` 打开最上面的卡片，`cmd-[` 打开最后一行。默认页和其他窗格一样带框，窗口结构不变，只是标题栏不写名字。正中同 T3 的启动页（底部留 40px 给它的顶栏，让列表在整个面板里居中），三个按钮，最宽 320px、高 32px、圆角 8，左边 14px 文字，右边按键的每一笔各占一个 20px 键帽（圆角 4，7% 的 `foreground` 底色，12px 中粗）：Next agent（`t3-tabs.next`，没有可去之处时变暗，此时按键也没有反应）、Go to、New tab，没有名字和数量。悬停时用 6% 的 `foreground` 着色，因为主题的 `hover` 可能和窗格底色相同。这里的标签栏留空（没有 tab、`+`、Actions 和 Review）。它是一个真实的 space，带一个 mod tab（`t3-home`），第一次需要时才创建，所以键盘会离开 agent，任何去往 agent 的操作也都能离开它。Spaces、新建菜单和 Inbox 的筛选都不显示它，计数或切换 space 的键也会跳过它，项目序号不变。它的窗格就是插槽：`pane.split` 加 `mod` 或 `argv` 能放入任何内容，并随 tab 保存；跳转列表显示这些窗格，不显示默认页。在这里按 `cmd-t` 打开新建菜单，先选 space；`cmd-w` 不起作用；窗格照常关闭，关掉最后一个会回到默认页，这也是重置方式。没有给 Inbox 传 `home` prop 的布局仍然跳到下一张卡片，单独发布的 `herdr-t3-inbox` 就是这样。
-- **Inbox / Settle**：悬停已结束的卡片出现 `✓ Settle`，已置顶的也一样。和 T3 相同，Settle 立即取消置顶。core 拒绝这次 Settle 时，置顶放回原来的位置，其间新加的置顶也保留。Undo 同样把置顶放回原位。悬停已 Settle 的行出现撤销箭头（`Un-settle`）。Settle 按钮和撤销箭头的提示只在当前查看的卡片上附带 `cmd-shift-s`，因为这个键只作用于它。有新工作（working、blocked，或 Settle 后又结束过一轮）时，已 Settle 的 agent 自动回来。`cmd-shift-s`（`t3-tabs.settle`，自己写标签，所以隐藏侧栏时也能用，不管 Inbox 副本启动过没有；在 Lists 里不起作用）对当前查看的 agent 做同样的事：已结束的，像按钮一样 Settle 并回到 Home；已 Settle 的则取回，排到 Active 顶部。只有明确的取回才排到顶部：点撤销箭头、拖出 Settled、对已 Settle 的 agent 按这个键。Undo 把 agent 放回原位，不管在哪个窗口、从哪个入口点。用别的方式清掉的 `settled` 标签也保持原位。按键取回时，`t3-tabs` 在标签清掉后写 `shared("t3-inbox.unsettled")`：address → 一个每次取回都递增的戳，只保留还活着的终端。每个窗口的 Inbox 把没见过的戳当作一次取回。不做自动 Settle。拖动照 T3 侧栏（`Sidebar.drag.ts`、`Sidebar.pointer.ts`）：按住卡片或行移动 6px 即拿起（Working 的行、Settle 变更还没从 Core 回来的行除外）。拿起的副本（`selected` 底色、大阴影）只上下移动，按下的位置始终在鼠标下，限制在列表内、Pinned 标签以下；右上角换成松开后动作的标记：`Pin`、`Unpin`、`Settle`、`Un-settle`（accent 描边和 10% 底色），原地不动时不显示。只在拿起期间，24px 的 `Pinned` 和 `Active` 标签（12px 中粗加 1px 细线，作为目标时 `accent`）以 150ms ease-out 的高度过渡展开，Settled 标题也会显示（即使为空），平时 `foreground`，作为目标时 `accent`。每行放在 lane 里：上方一个间隙、行本身和列表的间距（卡片后 5px，窄行之间 1px），最后一行之后再有一个间隙；拿起的行移向别处后原位收起。落点的间隙张开到目标分区的行高：Pinned 和 Active 为卡片高 + 5（拿起的卡片自身高度，或最近测得的卡片高度），Settled 为 36px。Pinned 保留手动顺序（置顶卡片上半部放在它上面，下半部放在下面）；Active 和 Settled 按各自排序（取消 Settle 或 Settle 后排最上，取消置顶回到按时间的位置）。Active 或 Settled 为空、或 Settled 折叠时，显示 36px 虚线占位，作为目标时 accent。Settled 始终一页：移出一行时下一行补上，Settle 进来一行时最后一行隐藏。在侧栏内任意处松开都落在间隙处；Herdr 不上报侧栏外的松手，所以按离开方向决定：从上下边缘离开（按最后的鼠标位置取最近的边）就按标记落下，和 T3 越过列表两端仍保留最后目标一致；Esc（只在拿起期间侧栏持有键盘）、从左右两侧离开或拿起的行从列表消失都会放回原处；松开不会打开那一行。Settle 当前正在看的 agent 时回到 Home，不同于 T3 的跳到下一张卡片。划选：按住卡片的 `✓ Settle` 或已 Settle 行的撤销箭头划过同一分区的多行，标记整段，松开即全部 Settle（或取回）。置顶卡片不论状态都按置顶顺序留在顶部，空间头像后有 pin 图标。置顶存在共享状态 `agents.pins`，与 t3-agents 共用。
-- **Inbox / Snooze**，照 T3：`snoozed=<唤醒毫秒>` 写在 agent 的终端上（`hc label`，回读前暂存）。悬停时，任何卡片（工作中、已置顶、需要人处理的也可以）在 Settle 前显示 20px 高的 `clock` 按钮；悬停的控件占住角落，状态在其下淡出。菜单开着时卡片保持悬停的样子，指针移进菜单时什么都不动。卡片的右键菜单（`t3-menu`）有 `Snooze…`，经 `t3-inbox.snooze:<address>` 打开同一个菜单，和键盘打开一样：没有按下，所以用翻转，焦点在菜单里。点开菜单（`Popover`，同 T3 打开时 150ms 淡入、关闭立即消失；宽度随内容、至少 160px，行高 28px，同 T3 的 `align="end"` 和翻转：时钟左边放得下（距窗口左缘至少 5）时从时钟下方垂下、右缘对齐，放不下时左缘和时钟对齐、向右伸出侧栏；键盘打开时用后者；鼠标或按键到达前不高亮；↑/↓，Enter 或 Space，Esc；焦点句柄交给面板，打开时在面板自己的 key context 里绑定 Enter 和 Space，因为 Popover 自带的绑定只会关闭菜单）：In 1 hour、In 3 hours、This afternoon（15:00，过点消失）、This evening（18:00，过点消失）、Tomorrow（9:00）、Tomorrow afternoon（15:00）、Next week（周一 9:00，周日时显示为 Tomorrow），最早的在上，同一分钟只留一行，右侧写唤醒时间。和 T3 一样，时长从点击时算起，菜单画出后已过去的时间会被拒绝并提示。分隔线下的 `Custom…` 打开对话框（本 mod 作为 overlay，同 t3-actions 的编辑器：T3 的对话框，384 宽，高度随内容，`frame: "none"`，自画圆角 16 外壳，内边距 24，20px 半粗标题，footer 上方一条分隔线，字段和按钮高 32、圆角 8）：Date and time（自绘日历，单元格 36px，过去的日期不可选，方向键走日期并跟着翻月，Enter 或 Space 选中，加 `HH:MM`）或 Duration（同 T3：数量放在 − 和 + 步进按钮之间，是最小到 0 的 `NumberInput`；单位 Minutes、Hours、Days 用 kit 的 `Select`，同 T3 从触发器下的列表里选；↑/↓ 移动高亮，Enter 或点击选中，Esc 或点别处关闭）。不存在或已过去的时间、非正数的时长会提示并保持打开；结果经 `t3-inbox.custom-snooze:<address>:<at>` 命令交给 Inbox，和预设一样 Snooze。预设不可配置。Snooze 后底栏出现 `Snoozed, Undo`，和 Settle 的提示条一样（T3 的 `Snoozed 1 agent, Undo` 只在单独停靠、没有底栏时出现）；若在查看它，则和 Settle 一样回到 Home。Snoozed 收纳区在 Working 和 Settled 之间，默认折叠，最早醒的在上；行的样式同已 Settle 的行，显示剩余时间（`10m`、`3h`、`2d`，`accent` 闹钟），悬停换成划掉的闹钟（Wake；按住划过多行叫醒整段）。把行拖出来即唤醒（标记 `Wake`）；不能拖进去：放下时给不出唤醒时间。到点后回到原位（其间 `track` 跳过宽限期；在 Snooze 期间结束的工作算回到你手上，所以醒来时排到顶部，和 T3 的 return 一样），标 `blocked` 色的 `Woke`，直到看过或点击（只有活动窗口里的查看才算：后台窗口不清掉到期的 Snooze，也不因新一轮清掉，Woke 留给人）；悬停时 Woke 留在控件旁边；仍在工作的显示在 `Working` 旁边。撤销 Settle 会还原未到期的 Snooze。提前结束：需要人时只在此期间显示（标签保留）；它的子树失败、查看时开始新一轮、Wake、置顶或 Settle 清除标签。需要人时 Snooze 的，标签是 `<唤醒毫秒>:held`：在这次需要期间保持隐藏，失败也一样；需要结束后 Inbox 或 `t3-tabs` 去掉标记，下一次需要人时照常提前出现（`tree.js` 的 `snoozeOf`）。失败和新一轮由 `t3-tabs` 盯着，两个模式都算，所以 Inbox 副本没启动过也会结束 Snooze。已置顶的保留置顶，醒来回到原处。
-- **Inbox 动画**，照 T3（`Sidebar.motion.ts`）：行的顺序或所在区变化时（Settle、取消 Settle、一轮结束、拖动放下），挪了位置的行从原位滑过去（收起区标题、Show more 和 Active 为空时的提示也一起滑，和 T3 的列表标记一样，行不会从它们上面滑过），新行从上方 40px 淡入（上面有留下来的行时跟着它走），离开的行在原位淡出；150ms ease-out，拖动中或一次超过 40 行时不播。拖动放下的行从松手处滑到落点。悬停时，时间和 Settle/撤销按钮交叉淡变；working 卡片平时 70% 不透明度，悬停或正在查看时恢复；已 Settle 行的项目标记平时 40%。Herdr 只给元素“之后的变化”补间，所以移动的行换一个新 id，先在原位画一帧再放手。
-- **Lists 动画**：`shared/motion.js` 是唯一的列表动画，复制到 Spaces 和 Agents，行的任何变化都播，包括折叠和换排序：T3 只为贴底的 shelf 停播，Lists 没有这种 shelf。离开的行由条目的 `ghost()` 重画，不带 handlers、列表已用的 id 和悬停提示；机器标题没有 ghost，直接消失。行在按下时显示 `selected`，Inbox 也一样。Lists 的折叠箭头在同一位置交叉淡变两个方向，T3 是旋转，Herdr 无法为旋转做动画。Inbox 的 shelf 直接切换箭头：shelf 折叠时标题会移动，移动的行换了新 id，淡变会重新开始。
-- **Inbox：mod pane 卡片**：mod pane 属于 space，不属于某个 agent，所以在 `shared("<mod>.program")` 里声明了 `inbox: true` 的（比如 review：`{ icon, tint, name, inbox: true }`；只有图标不算声明）有自己的卡片，不管旁边有没有 agent：space 标记和名字、`<mod>.titles` 里的名字，图标放在 agent 卡片放程序图标的位置。它按 `<mod>.status` 走，和 agent 按状态走一样：`working` 在 Working 收纳区，`done` 和 `blocked` 回到 Active 顶部；第一次出现时在 Active 顶部。`inbox: true` 同时表示这个 pane 可以随时关掉，状态都在别处：Settle（`Settle and close`，和 agent 同样的条件下才提供，以及 `cmd-shift-s`）就是 `pane.close`，没有 Settled 也没有 Undo。正在查看时回到打开它之前的地方，这是唯一不回 Home 的 Settle：独立标签回上一个显示过的标签，分屏回旁边的 agent；space 的最后一个标签会先询问。单击是 `pane.focus`，可跨 space。不能置顶、不能拖动、不参与划选。受 space 筛选影响，查看被筛掉的卡片时放宽筛选。焦点在它上面时点亮它自己的卡。没有声明的 mod pane 没有卡片，它点亮旁边 agent 的卡。单独停靠的 Inbox（没有 `home` prop）仍是不含 agent 的标签每个一张。
-- **当前查看的行**，照 T3 的 route row：所在区折叠或排在 Settled 当前页之外时仍然显示；查看的是没有自己行的子 agent（区块、peek）时，点亮最近一个列出的祖先；从别处切到一个被空间筛选隐藏的 agent 时，筛选放宽为全部空间并保存（首次绘制不会，查看期间自己选的筛选也保持不变；只在选中 Inbox 时，在 Lists 里切换 agent 不动筛选）。Herdr 不能用代码滚动普通列表（只有虚拟列表可以），所以和 T3 不同，不会把它滚进视野。
-- **撤销提示条**，照 T3：Settle 和取消置顶（Inbox 里拖出 Pinned，或 Lists 的图钉按钮，经 `t3-tabs.unpin`）后，在底栏空位显示 `Settled,` 或 `Unpinned,`（或 `Settled 2,`）和 `Undo`，11px，5 秒（200ms 淡入淡出），不遮挡列表，Lists 和 Inbox 都有；隐藏侧栏时显示在标签栏；空间不够时截断摘要，`Undo` 始终显示（T3 还会把文字换成图标，GPUI 的 flex 排不出来）；由执行 Settle 的一方通过 `shared("t3-inbox.notice")` 发布，Undo 运行 `t3-tabs.undo`，它通过 `shared("t3-inbox.undo")` 通知隐藏的 Inbox，Inbox 在下一次绘制时处理；取消置顶的 Undo 只放回置顶及它在置顶里的位置，不写标签。布局里没有 `t3-chrome` 底栏时（单独停靠），Inbox 改为在第一个收起区标题上方显示 `Settled 2 agents, Undo`；连续同一种操作合并计数；Undo 让它们回到原样，不算新消息。不绑快捷键：⌘Z 留给终端。
-- **关闭**，照 T3 的 `confirmTerminalClose`：标签和窗格的 ×，以及上面的快捷键，都交给标签栏的 `t3-tabs`。有程序在运行时（`hc get`：前台不是它自己的 shell，或查询没有结果）打开 T3 的确认框，由 `t3-actions` 的 `actions: "confirm"` 绘制（`frame: "none"`，512 宽，高度随文字，自画圆角 16 外壳，Enter 确认、Esc 取消；措辞照 T3：标题是 `Close terminal "<名字>"?`，标签里只有一个窗格时用标签名，标题会换行；正文是 `This stops the running process and clears its history.`；标签里有多个在运行时，标题是 `Close 2 terminals?`，正文列出它们的名字）；没有程序在运行时直接关闭，这一点和总是确认的 T3 不同。动作的 Delete 和 Inbox 的 Clear（`Close 2 terminals?`）也用这个确认框；单独发布的 Inbox（没有 `home` prop）没有 `t3-actions`，它的 Clear 回退到自带的 `confirm`，大小随文字。space 的最后一个窗格交给 Herdr 自己的 `Close space?`。`tab.close` 和 `pane.close` 对 agent 不变；命令面板仍直接执行它们。右键菜单（标签、space，以及经布局根 `terminal_menu` 的终端右键，窗格标题栏右键也打开它）是 `t3-menu`：用 `mod.clone` 克隆的 Herdr `menu`，尺寸改成 T3 的（内边距 4，28px 的行、圆角 4，14px 字，16px 图标），逻辑改了三处：终端菜单加了 `Copy address`（图标是自己的 `icons/copy.svg`，`choose()` 写入剪贴板）；`choose()` 里标签的 Close 交给 `t3-tabs.close-tab:<id>`，窗格的交给 `t3-tabs.close-pane:<pane>`，所以会和 × 一样先确认、先离开；列表移动走 `shared/list.js`，和所有弹窗一样（见下）。菜单项保留 Herdr 的命令，图标、分隔线和按键提示照旧。Herdr 的菜单更新时要手动跟进，两处都要合并。
-- **键盘**，照 T3 的 focus-visible（`shared/focus.js`，用到它的 mod 各放一份副本）：键盘所在的控件上画一圈 2px 内描边，颜色用 `accent`（T3 的 `ring` 就是它的 primary），叠在控件上，不挪动任何东西。和 T3 的行一样，每个控件都是独立的 Tab 停靠点，不用 roving；Enter 和 Space 与点击的动作相同。行内只在悬停时出现的控件（Settle、Snooze、撤销箭头、pin、标签的 ×、窗格标题栏按钮），在键盘落在该行或控件上时也会出现。Review 栏的计数段和 logo 也是停靠点，和旁边的 Actions 控件一样；New 底部的 New space、`← Spaces` 和 Go to 底部的 New tab 也是，所以 New space 的选机器步骤能用键盘。终端保留 Tab，而能持有键盘的控件一按下就会从终端抢走键盘，所以弹层之外的控件只在键盘模式下才是 Tab 停靠点：`pane.go` 移到侧栏列表（`mod.json` 里的 `focusable`）时开始，落在该列表的第一个按钮，之后 Tab 走遍整个界面；键盘离开所有停靠点（`pane.go`、点击终端、在显示其他 agent 的行上按 Enter）后半秒内结束。模式存在 shared 里，比持有它的副本活得久，所以没人持有的模式由三处结束：每个 mod 的 `close()` 调 `stopsEnd`；本次运行的第一个副本清掉崩溃或退出留下的值（`globalThis.t3FocusRun`：所有 mod 共用一个 JS 上下文，这一点 Herdr 没有承诺；`sessionStorage` 是每个副本各一份），有没有标签条都一样；在一个没在走键盘的副本里按下停靠点，会在按下抢走键盘之前结束模式，就像点击会结束 focus-visible。Inbox 自己的菜单只在键盘真的在菜单里时才保持模式。没有搜索框的菜单（右键菜单、Actions、排序、Snooze）在按键或指针到达前不高亮，所以刚打开就按 Enter 什么也不执行；指针离开一行会清掉高亮，排序菜单除外。菜单支持 Home、End，没有搜索框的菜单还支持 T3 的 typeahead（750ms 内连续输入字母；重复同一字母则在以它开头的行间切换）；搜索框里（New、Go to、Inbox 筛选）Home、End 仍移动光标，同 T3 的 Base UI combobox。所有弹窗列表的移动方式只有一套（`shared/list.js`，用到它的 mod 各放一份副本）：↑/↓ 循环，指针所在的行高亮，会滚动的列表始终让高亮可见，指针下的那行除外：即使只露出一半也不动，否则列表会跟着指针滚，滚轮会带着高亮走。弹窗列表不单独用滚动容器：它跟不上按键。再点打开弹窗的按钮会关闭弹窗：这次按下同时也是弹窗外的按下，弹窗先被关掉，所以点击时用 `justClosed`（`focus.js`）对比弹窗 `close()` 写入 shared 的时间，不再打开。
-- **标签**：单击选中，双击改名，拖动排序（照 T3，移动 6px 才开始拖，点击时的手抖只算选中；按 Esc 或离开标签栏放回原处；只在拖动期间标签栏持有键盘，所以平时点击标签栏不会夺走终端的键盘），右键菜单，滚轮切换上/下一个标签。
-- 置顶、折叠、排序、筛选和收纳区状态按屏幕保存（`localStorage` / 共享状态 `agents.sort`、`space.colors`）。
+### 共用名字、标记与注意力
+
+卡片、Agents、标签、标题统一命名：Pi 在跑先用 `pi.session`；再用人为命名的标签，但只给顶层 agent，且不能与另一个顶层 agent 共用此标签；然后是有意义的终端标题，只去掉该程序自己的装饰（Pi `π - … - <目录>`，OpenCode `OC | `）；最后程序名。拒绝纯路径／user@host／程序／目录标题，以及不再跑 agent 时残留的 agent 装饰标题。子 agent 不继承标签名。未命名标签按里面的 agent，否则聚焦 pane 命名。
+
+父级汇总活着的后代：任一 blocked/error 优先；然后自己的未读 done；再是自己或后代 working；否则自己的状态。子 agent done 是父级的消息，不单独亮 done。会报告状态或程序标成 agent 的活终端才算，命令 shell 不算，但经过 shell 启动的 agent 算。Working 用自带转圈／`working`；blocked 是圆角 `!`、15% `blocked` 底（通常 14px，Inbox 16、Agents／子 agent 行 12）；done 是 6px `done` 点（Inbox 绿色 `Done`）；idle 在 Agents／子 agent 菜单里是环，其他不画。
+
+Space 标记优先当前所在位置（第一个终端目录，否则创建目录）的仓库根 favicon：先常见文件再页面／路由 icon 声明，不含 `.icns`，16px、圆角 25%。没有则取名字第一个字母／数字、大写，粗体等宽、字号为标记的 8.25/16，从 T3 的 18 色按名字哈希取（暗色 Tailwind 400、亮色 600），同色 14% 底；没有可用字符就文件夹。找到十分钟重查，没找到一分钟。程序标志按组件槽直接画 Herdr/mod 素材，不改原画布配色。
+
+### Inbox 与 Lists 的边界
+
+品牌按钮／`cmd-shift-b` 切模式，侧栏隐藏也可切且保持隐藏。共享名字、pin、Settle/Snooze 标签含义；注意力策略只在选中 Inbox 时生效，无论侧栏显隐：
+
+| 规则 | Inbox | Lists |
+| --- | --- | --- |
+| Settle／Snooze 控件 | 满足条件时提供 | 不提供；Settle 键无作用 |
+| Snooze 中的 working | 藏进 Snoozed、不计 working 数 | 原有行和顺序继续转圈 |
+| Settled／snoozed 未读 done | 隐去 | 隐去 |
+| 关闭当前 agent 整标签／最后 pane | Home | space 上一次看的标签 |
+| agent 导航 | 画出的行；折叠收纳区只算当前行 | 全部分组，包括折叠的 |
+| space 筛选 | 从别处带进被隐藏 agent 时可放宽 | 保持不动 |
+| 标签栏 | agent 面包屑＋家族／工具，工具无状态 | 全部标签和状态 |
+
+Snooze 子树失败、或查看时开始新轮，两个模式都结束 Snooze，Inbox 从未启动也成立。只有 Inbox 和活动窗口中的查看清除 Woke。Settle 后有新的 busy/blocked 或结束轮次，所有位置立即不再把标签当作有效，不等 Inbox 绘制。
+
+### Inbox 排序、Settle、置顶与 Undo
+
+Active 先 blocked、不论多久，其余按何时回到人手上，同时间按 address。Working 按本轮开始，Settled 按 Settle 时间，Snoozed 按最早醒。结束工作多留 Working 2s，避免快速续跑抖动；blocked 立即离开，pinned/settled 不等。查看不改变顺序，点击 `agent.focus`，不自动 zoom 分屏。
+
+Settle 始终手动：悬停已结束卡片（置顶也可）按 `✓ Settle`，或当前 agent 用 `cmd-shift-s`。它去掉 pin、写标签、进入 Settled，新工作自动回来。对当前已 Settle agent 按同键、点 Un-settle、拖出来，是明确取回，排 Active 顶；其他方式清标签保持原位。Undo 恢复位置、标签、原 pin 位置，保留其间新增 pin；Settle 被拒也把 pin 放回。Clear 先确认，关闭符合条件的 settled 终端，保留当前标签。
+
+Pin 一份手动顺序与 Agents 共用。按钮／菜单 pin 放顶，拖动选落点；pin 结束 Snooze。置顶不论状态留顶。Unpin 回时间位置并提供 Undo，只恢复 pin 及其位置、不写终端标签。
+
+Settle、Snooze、Unpin 在底栏空位留 `Settled, Undo`／`Snoozed, Undo`／`Unpinned, Undo`（批量带数量），5s、200ms 淡变；隐藏侧栏时在标签栏。空间不足先截摘要，保留 Undo；连续同操作合计。Undo 恢复原状，不算新消息；仍在此次动作到达的 Home 时还带回 agent，去了别处则不跳。无 Undo 键，`cmd-z` 留给终端。
+
+### Inbox 拖动、划选与动画
+
+移动 6px 拿起符合条件卡片／窄行，Working 卡片、等待 Core 回传的 Settle 不能拿。`selected` 加阴影的副本只竖向移动，按下位置留在指针下，徽章预告 Pin／Unpin／Settle／Un-settle／Wake。仅拖动时 Pinned/Active 标题 150ms 展开到 24，空 Settled 也显示，目标标题／间隙为 accent。间隙匹配卡片＋5 或 36 窄行；空／折叠目标用 36 虚线占位。Pinned 按卡片上下半决定前后；Active/Settled 沿用自身排序，不能任意手排；Settled 进入／移出不变当前页长度。
+
+侧栏内松手提交，不打开行；从上下边离开提交最后目标，从侧边离开／Esc／行消失／窗口失活取消。仅拖动时列表拿键盘，结束还给 pane。按住 Settle 或 Un-settle 划过同区多行再松手成批处理；Wake 同样支持。Snoozed 不接落入，因为拖动说不出时间。
+
+换序／换区动画 150ms ease-out：移动行从旧位滑入，新行从上方 40 淡入，离开原地淡出；收纳区头、Show more、空标记也参与。拖动时或同时超过 40 行不播，放下从松手位置滑入。Lists 排序／折叠共用动画、箭头交叉淡变；Inbox 收纳区箭头直接切。按下行用 `selected`。
+
+### Snooze
+
+不需要人处理的卡片（含 working／pinned，不含失败轮）在 Settle 前提供 clock。菜单打开保持控件悬停稳定。预设 In 1 hour、In 3 hours、This evening（18:00，过去就不列）、Tomorrow（09:00）、Next week（周一 09:00，周日叫 Tomorrow），时间先后排序、同分钟去重。时长从点击算，固定时间若开菜单后已过则拒绝。宽至少 160；时钟左边能留窗口边 5 就下挂右对齐，否则从时钟左缘向右延伸。不开放预设配置。
+
+Custom 提供 Date and time（36px 日历格，过去日期不可选，方向键走日期／月份，Enter/Space 选，`HH:MM`）或 Duration（非负数、−/+ stepper、Minutes/Hours/Days select）。不存在／已过时间、非正时长内联提示并保持打开；应用时重新检查 agent 是否需要人。
+
+Snooze 写唤醒时间，当前查看的同时收起。醒来回原位，期间工作结束则排 Active 顶；带 Woke 直到活动窗口查看／点击，后台不能消费；仍工作可同时显示 Working 和 Woke。权限询问暂时露成 Needs you、不删标签，回答后再隐藏。子树失败、查看时新轮、Wake、pin、Settle 清标签。置顶在 Snooze 下保留，醒后回 pin 位置；撤销 Settle 只恢复没过期的 Snooze。
+
+agent 菜单的 Snooze 子菜单共用预设／Custom，右侧写醒来时间。悬停 100ms 开，→/Enter 打开并高亮首项；←/Esc 只关子层，选择两层都关。旁开、首行对齐，仅左边放得下就翻左；指针斜穿其他行往子层走时，留 300ms 才切换。
+
+### 当前行与 mod 卡片
+
+当前行即使所在区折叠、超出 Settled 页也露出；没有自身行的子 agent 点亮最近已列祖先。从别处带进被筛掉 agent/mod 卡片时，Inbox 筛选放宽为全部并保存，但首次绘制不做、人在当前位置主动选的筛选保持。普通侧栏列表不能代码滚到当前行，这里与 T3 不同。
+
+pane mod 通过 `shared("<mod>.program") = { icon, tint, name, inbox: true }` 明确自荐才有卡片，只有图标不算；标题取 `<mod>.titles`、状态取 `<mod>.status`。首次／done／blocked 在 Active 顶，working 在 Working。它属于 space 不属于 agent，聚焦自己才亮自己的卡，其他 mod pane 点亮旁边 agent。Home 里都无卡片。自荐同时承诺可随时关：Settle and close／Settle 键关 pane，无 Settled/Undo，回之前标签或旁边 agent，不回 Home；space 最后标签先确认。无 pin、拖动、划选；受 space 筛选。
+
+### 标签、导航与安全关闭
+
+Lists 标签单击选、双击改名、右键菜单，移动 6px 才拖，Esc／离开标签栏取消，仅拖动时拿键盘。Inbox 只有不含 agent 的标签能在它们之间拖。滚轮只滚、不切标签。点 zoom 段聚焦 pane 并移动原生 zoom，不改分屏结构。
+
+Inbox 点面包屑 space 重用单独停在提示符的 shell 标签（最近看过优先），没有才新建，连点不堆空标签；`cmd-t` 始终新开任务。两者让无 agent 标签成为 fresh，面包屑只有 space，直到再看 agent。聚焦同标签程序／自荐 mod 时，保留该标签最后看的 agent、变暗，点回；从标签条／标签键进不含 agent 的工具标签，保留该 space 最后看的 agent 及家族。当前标题点击下挂左对齐 agent 菜单，chevron 只悬停／聚焦显示；held/away 标题点击回去、无 chevron。右键 space／标题／父级总是该物菜单，暗的也一样。
+
+上／下 agent（`cmd-]`／`cmd-[`）按所选模式行走，不循环，含符合条件 mod 卡片，不逐个走没有 pane 的子 agent。Home 上 next 取首行，prev 取末行。上／下标签和数字标签按实际显示条目，上／下循环。space 键按侧栏顺序（含折叠 worktree），跳 Home 和虚拟仓库标题，项目号稳定。
+
+关闭当前 agent 整标签／最后 pane，Inbox 回 Home，Lists 回该 space 最近看的标签；只关一个 pane、仍有其他 pane 就留在该标签。无 agent 标签也回此前标签。后台关闭不跳；无历史（重启后等）交给 Herdr。布局发起关闭先离开当前标签再销毁，避免右邻未读被误看。外部关闭／程序退出可能先闪一帧 Herdr 选择；离开视野后归还误消耗的 done/Woke，标签失败重试；人留满 3s 就算看过，邻居／done 仍可能短闪。
+
+所有布局 ×、关闭键、右键 Close、Go to `ctrl-d` 共用检查：`hc get` 判前台是否为自己的 shell 以外程序，没答案也问；没有程序立即关。否则显示 `Close terminal "<名字>"?`、`This stops the running process and clears its history.`，多程序用复数标题和列表。Enter 确认、Esc 取消；标签唯一 pane 用标签名。space 最后 pane 用 Herdr 自己 Close space。直接 `tab.close`／`pane.close`（含官方命令面板）仍是原生命令。
+
+右键不选中／切换被点物，做不了的项隐藏；分组顺序：去处、状态、命名／复制、worktree、结束。
+
+| 对象 | 可用动作 |
+| --- | --- |
+| Agent，含面包屑父级／子 agent 行 | 顶层 Pin/Unpin；Inbox 下子树不忙时 Settle/Un-settle、符合条件 Snooze/Wake；名字来自唯一标签且不是 Pi 时 Rename；Copy address；Send back 父级；Close 自己 pane |
+| Space，含分组／面包屑／筛选行 | New tab；Rename；Copy 当前 path；仓库 New/Open worktree；linked worktree 的 Remove worktree（`ansi1`）；Close |
+| 未开 checkout 虚行 | Open、Copy path |
+| 已连接／重建机器 | New space here、Connect |
+| Tab | New tab、Rename、Close |
+| 终端／pane 头／zoom 段／mod 卡 | Split right/down、Zoom；终端 Copy address（快捷键列显示 `t2` 等地址）；把右键交程序或取回；Send back；Close pane |
+
+终端地址不进标题或侧栏，终端／标题右键才有 Copy address，mod pane 没有。
+
+### Spaces 与 Agents 交互
+
+点 space 切换，拖 6px 后在同机器内排序；checkout 带展开 worktree，worktree 只在同级间。抬起 `selected` 加阴影、落点间隙，松手 `space.move`，模型回传前保持意图；Esc／离开取消。仓库记折叠。checkout 没开、至少两个 worktree 时，在第一个 worktree 原位置加暗色虚 checkout；一个则普通 `repo · branch` 行。点虚行 `space.new` 只开一次，在原位替换；bare 仓库改为折叠。正在看的 worktree 折叠后仍露出，不计隐藏数量。
+
+点顶层 Agents `agent.focus`，子行 peek；折叠子 agent 正在看则点亮父级，正在看的 done 留 Done 到离开。结束的 agent 清折叠记忆。排序菜单下方 4、右对齐、150ms 淡入、28px 行，同按钮关闭。pin 与 Inbox 共用、结束 Snooze；unpin 用全局 Undo。Settled/snoozed 在 Lists 原位保留 working 转圈，只隐 done，没有另一个 Settled 组。
+
+### Go to、New 与 Actions
+
+Go to（`cmd-p`／Inbox Search）一行一个 pane：agent、shell、程序、mod，没有无 pane 终端和 Home。最近的先、越近越前，再当前 space、当前机器、其他 space／tab 顺序，当前 pane 最后。所有导航入口共记最多 30 个活 pane。打开选之前 pane，`cmd-p`、Enter 来回。行是 space 标记、共用 pane 名，下方程序图标／名字、远程机器、space、活子 agent `+n`，右侧状态。匹配 space／机器、人为命名标签、pane 名、程序名／key、folder，pane 名命中优先元数据命中。Enter／点用跨 space 的 `pane.focus`，`ctrl-d` 走相同确认关闭。Footer 是 ↑/↓ Navigate、Enter Go、Ctrl-D Close pane、Esc Close，New tab 打开 New。
+
+New 当前 space 先，同机器聚合；第二行目录，远程加 server／机器。平台键 `1…9` 选编号，提示 macOS `⌘1`／其他 `Super+1`。Footer New space 在多机器时先选机器，未就绪禁用，`← Spaces` 返回。`cmd-n` 直接用当前机器，仅无需问机器时显示提示。侧栏 New space 直接选机器，一台时立即创建。New tab 用 space 当前所在目录（首终端，否则创建目录），不固定在初始目录。
+
+Actions 全局，不按项目。主动作是上次运行，否则第一个；`▶` 重跑，菜单选中运行并设主，行 gear 编辑，Add action 新建。编辑器必填去空白后的 Name／Command，可选 Folder、图标、Tab／Split right／Split down；不合格 Save 禁用，Delete 先问。每次运行新开有名字的标签／分屏：`terminal.open { argv:["sh","-c",command],name,place,folder? }`，结束后 shell 保留。没填 Folder 取聚焦终端 cwd、同 tab 终端 cwd、space folder，展开 `~`。列表／上次选择跨重启保留。别名／函数需显式 `zsh -ic '…'` 之类，纯 Windows 需另装 `sh`。
+
+### Home 与设置
+
+Settle／Snooze 当前 agent（按钮／键／拖动／划选）默认回 Home，不替人决定下一步。After putting away: Next card 改为循环走卡片，无卡片回 Home。关闭当前 agent 整标签仍回 Home，不受偏好影响；后台动作不跳。`cmd-shift-h`／品牌标记去 Home，已经在就不动。Herdr 启动回上次位置，不强制 Home。
+
+Home 是按需创建、本机一个隐形 space，跨项目／机器共用。只靠记住的 id，或严格的本机明确名字 `Home\u200b` 认领，不看内容或普通 `Home`。Spaces／New／Inbox 筛选／Go to／space 导航都跳过。里面一个 mod（默认 `t3-home`），或主目录 shell；无标题的 split/zoom/close，正常关闭键保护最后 tab／pane。原生 split 键／命令面板仍可加 pane，加的正常关。shell 起 agent 后，原地把 space 放成普通按目录命名的 space，不挪 agent，下次 Home 新建。非 agent 忙 shell 留原 tab，旁边新建 Home tab；shell 退出可能带走 Home，按需重建。
+
+底栏 sliders／`cmd-shift-,` 开布局设置，再次调用替换旧框；Esc 先关 select、再关 dialog，恰好两项：
+
+| 偏好 | 选择与作用 |
+| --- | --- |
+| After putting away | Home（默认）、Next card，作用于 Settle/Snooze/拖动/划选，不作用于关闭 |
+| Home shows | Default、Terminal、`mod.json` 声明 `"home":true` 的已装 mod；按 title 否则目录名排序，当前使用的即使不再自荐仍列出 |
+
+打开时读 app-home `mods/`，读不了／坏 manifest 跳过。选择内容立即重整 Home，到达时也整。设置各实例立即生效、更新保留。Select 是 28px 菜单行、初始无高亮、当前带勾，箭头/Home/End/首字母、Enter/Space 选择、Esc/外部点击关闭。
+
+### 可选 asciicn 壁纸 Home
+
+装 `extras/mods/asciicn-wallpaper`，在 Home shows 选择。静态主题色画，不做动画；内置 Lighthouse、Mountain dusk、Nebula、Ember，来自 [asciicn](https://asciicn.dev)，MIT。SVG 图形画字，映射最近主题 `ansi0..15`／foreground、四档透明度，不是字面文字或原图精确颜色。Braille、方块、象限、阴影、半调圆点、斜线保留形状，其他字符按暗度画圆头竖条、不保留字母轮廓。
+
+画面填满 Home 高、主体横向锚定；比 pane 窄的填宽、上下均裁。贴底，缩小高度稳定 250ms 才采纳，避免进入瞬间跳。仅右下 340×104 区域显示距角 12 的切换器，chrome/圆角8、24px 按钮：`‹`、名字（最宽160）、`›`、`+`，导入画另有 `×`。选中持久化，新 Home 也沿用。
+
+`+` 立即开卡（再点＋／×关）：主 Choose image…、次 Import Studio file (.ans)…，可展开 Create in asciicn Studio…（开 Studio、用 .ans 存 Downloads、回来导入），辅助 Open folder。Studio：`https://asciicn.dev/studio?source=image&charset=braille&color=truecolor`。
+
+Choose image 是图片草稿，默认 Braille，可切 Blocks／Dots，同一完整 Home 预览保留空白画布和构图。Apply 存一份 `.ans`，最终场景就绪才选中；缓存失败保留草稿／预览，重试只能在内容一致时复用自己已发布的文件，否则另存可用名。Cancel 回原选择、不保存，但保留失败 Apply 已发布的 `.ans`。原图不改，只留生成画，保存后无回到图片编辑。图片／样式／异步状态在内存，迟到结果不能覆盖新选择。
+
+Studio `.ans` 保留已画样式，绝不提供图片样式控件；用空闲编号名复制、转换后选中。手放 `<appHome>/asciicn-wallpaper/` 的文件也出现，改动重转。Unicode、短横开头、普通隐藏名支持；恰好 `.ans`、`..ans`、`...ans` 主干不安全，拒绝。导入画 × 再次确认写明名字，取消不动，确认删 `.ans`/图块、作废在途转换、选前一张，迟到结果不复活。
+
+macOS 用 `osascript`、Linux `zenity` 选择，等待显示 Opening…；图片转 BMP 用 macOS `sips`、Linux ImageMagick `identify/convert`，没 ImageMagick 导入 Studio 文件。Windows／没选择框用 Open folder、复制 `.ans`。不处理 EXIF 方向，先外部旋转。失败／空导入弹提示、不自动重试。更新保留 mod 目录外的用户文件，见存储契约。主题导出、可选配色是另装 extras，不是布局前提。
+
+### 键盘与焦点
+
+每个控件独立 Tab stop、Enter/Space 点击、2px 内描 `accent` 焦点环。悬停控件在键盘位于该行／控件时也显示。终端保留 Tab：弹层外用 `pane.go` 到可聚焦侧栏进入键盘模式，从首按钮再 Tab 走 chrome；离开全部 stops（pane 导航／终端点击／激活去处）500ms 内结束。普通 chrome 点击不夺终端键盘；关闭／崩溃／重启不留无人持有模式。
+
+弹层箭头循环，滚动跟高亮，指针下的行不强行滚走（滚轮带高亮）。无搜索菜单初始不亮，刚开就 Enter 无事，导航／悬停后才算；离开行清亮，排序例外。Home/End 在无搜索菜单跳首尾，搜索框里仍是光标。Typeahead 750ms，重复字母循环匹配首字母。按钮再按关闭、不重新打开。可搜索 New／Go to／筛选遵各自首匹配规则。子菜单 →/Enter 开，←/Esc 只关子，键盘回父。
+
+| 键（`keys.json` 布局上下文） | 命令／行为 |
+| --- | --- |
+| `cmd-shift-b` | `t3-tabs.sidebar`，切模式不展开隐藏侧栏 |
+| `cmd-alt-b` | `t3-tabs.panel`，上次页开关 |
+| `cmd-shift-g` | `t3-tabs.review`，Review 页开关；无键 `t3-tabs.files` 同理 |
+| `cmd-shift-s` | `t3-tabs.settle`，当前 Inbox agent/mod 卡 |
+| `cmd-p` | `mod.open:t3-picker` |
+| `cmd-]`／`cmd-[` | `t3-tabs.next/prev`，agent，不循环 |
+| `cmd-w`、`ctrl-alt-shift-x` | `t3-tabs.close-tab` |
+| `cmd-shift-w`、`ctrl-alt-x` | `t3-tabs.close-pane` |
+| `cmd-shift-h` | `t3-tabs.home` |
+| `cmd-shift-,` | `t3-tabs.settings` |
+| `cmd-t`、`ctrl-alt-c` | `t3-tabs.new`，Home 时开 New |
+| `ctrl-1…9`、`ctrl-alt-shift-1…9` | `t3-tabs.space:<n>`，不含 Home |
+| `cmd-alt-]`／`[`、`ctrl-alt-shift-]`／`[` | `t3-tabs.space-next/space-prev` |
+| `cmd-1…9`、`ctrl-alt-1…9` | `t3-tabs.tab:<n>`，显示的标签 |
+| `cmd-shift-]`／`[`、`ctrl-tab/ctrl-shift-tab`、`ctrl-alt-]`／`[` | `t3-tabs.tab-next/tab-prev`，循环 |
+
+按 Herdr 平台显示键名，非 macOS 的 cmd 是 Super。`cmd-d` 留给 Herdr 分屏，不是 Review。键盘在 Files/Review，`cmd-w`／`ctrl-alt-shift-x` 关面板而非背后标签；popup/dialog 持键盘时，四个标签／pane 关闭键都只关 overlay。浮动 `tabs-keys` 在侧栏隐藏、面板放大时也处理布局命令。
 
 ## 由什么构成
 
-- `layouts/herdr-t3.json`：根为 `row` → `sidebar` 列 [`brand` 块 `t3-chrome`；`sidebar-lists` stack [`lists` 列 [`spaces` `t3-spaces`、`agents` `t3-agents`]、`inbox` `t3-inbox`，props `{ "newMenu": "t3-new-menu", "picker": "t3-picker", "home": "t3-tabs.home" }`]；`sidebar-footer`（44px）`t3-chrome`，props `{ "footer": true }`]，以及 `work` 列（`chrome`）[`tabs-row` 行（40px，`"resizable": false`，`chrome`）[`tabs` `t3-tabs`、`actions` `t3-actions`，props `{ "block": "actions" }`、`tabs-end` `t3-tabs`，props `{ "part": "end", "block": "tabs-end" }`]；`work-body` 行 [`main` `{ "tab": "active", "pane": { "header": { "content": { "mod": "t3-pane" } } } }`]；`work-bottom-inset` 行 8px [`bar-measure` `t3-tabs`，props `{ "part": "measure" }`]；`status` `workspace-status`，隐藏]。预览图：`layouts/herdr-t3.svg`。布局不指定主题，显示用户自己的主题。
-- Mods：`t3-home` 是新写的 Home 默认页。`t3-chrome`、`t3-spaces`、`t3-agents`、`t3-tabs`、`t3-pane`、`t3-new-menu`、`t3-picker` 分别改自 Herdr 自带的 `workspace-chrome`、`spaces`、`agents`、`tabs`、`pane`、`new-menu`、`picker`；`t3-inbox` 是新写的。`t3-actions` 是单独的 mod，随布局一起安装，也负责绘制布局的确认框。`t3-menu` 是 Herdr 的 `menu`（`mod.clone`），尺寸改成 T3 的，Close 改走标签栏，列表移动用 `shared/list.js`。原样使用的自带 mod：`workspace-status`，以及 `mods/workspace-chrome/` 下的图标。有自己状态的部分放在 `main.js` 旁的单独文件：`t3-spaces/repos.js` 保存每个位置的 git 信息，并决定何时重读；`t3-tabs/navigation.js` 记录去过哪里、关闭后落在哪里、欠着哪些 done。`shared/sidebar.js` 为 t3-chrome、t3-home、t3-tabs、t3-spaces、t3-agents 和 t3-inbox 查找侧栏的布局节点。
-- `keys.json`：`layout:herdr-t3` → `cmd-shift-b`：`t3-tabs.sidebar`，`cmd-shift-s`：`t3-tabs.settle`，`cmd-p`：`mod.open:t3-picker`，`cmd-]` / `cmd-[`：`t3-tabs.next` / `.prev`（由一直显示的标签栏 t3-tabs 处理，按选中的模式写进 `shared("t3-inbox.rows")` 或 `shared("t3-agents.rows")` 的 `{ order, view }` 走，其中是 address，mod pane 的卡片是 `pane:<id>`，照 T3 的 `resolveAdjacentThreadId`，不循环，显示或隐藏都一样；只走顶层 agent，没有窗格的子 agent 只能弹窗打开。Inbox 发布它画出来的行，折叠的 shelf 只算当前查看的行；Lists 发布所有组，折叠的也算，因为 Idle 默认折叠，离开那里的行就没有按键能回去）。 `cmd-w` 和 `ctrl-alt-shift-x`：`t3-tabs.close-tab`；`cmd-shift-w` 和 `ctrl-alt-x`：`t3-tabs.close-pane`。有 dialog 或 popup 开着时，这四个键改为关掉它，和 Herdr 0.1.14 起的行为一致：Herdr 按绑定的命令判断，只认 `tab.close` 和 `pane.close`，而这几个键绑的不是，所以每个会以弹窗打开的 mod 都有一节 `mod:<名字>`，把它们绑到 `overlay.close`（我们的：`t3-picker`、`t3-new-menu`、`t3-menu`、`t3-actions`、`t3-inbox`、`t3-agents`、`pulls-review`；Herdr 的：`frame-settings`、`frame-palette`、`help`、`confirm`、`prompt`、`machine-add`、`worktree`），弹窗拿着键盘时这一节优先。本仓库打开的弹窗 mod 缺这一节时 `scripts/check.sh` 会失败；Herdr 的名单在每次跟进 Herdr 升级时手动核对。同时也在窗口里的四个（`t3-actions`、`t3-inbox`、`t3-agents`、`pulls-review`）在用 Tab 走到它们身上时也会接管这几个键，那时按下什么都不关。`cmd-shift-h`：`t3-tabs.home`；`cmd-t` 和 `ctrl-alt-c`：`t3-tabs.new`；`ctrl-1…9` 和 `ctrl-alt-shift-1…9`：`t3-tabs.space:<n>`；`cmd-alt-]` / `[` 和 `ctrl-alt-shift-]` / `[`：`t3-tabs.space-next` / `-prev`；`cmd-1…9` 和 `ctrl-alt-1…9`：`t3-tabs.tab:<n>`；`cmd-shift-]` / `[`、`ctrl-tab` / `ctrl-shift-tab` 和 `ctrl-alt-]` / `[`：`t3-tabs.tab-next` / `-prev`（走标签栏显示的标签，循环）。
-- 运行的程序和写入：
-  - `t3-spaces`：只读的 `git status` / `git rev-parse`（不加可选锁、不用 fsmonitor；`status` 不扫未跟踪文件）和 `hc machine ls --json`。点重装机器的 Connect 时运行 `hc machine rm` 和 `hc machine add`。
-  - `t3-inbox`：`hc label <agent> settled=<ms>:<turn>` 和 `snoozed=<ms>`（或 `<ms>:held`）。
-  - `t3-tabs`：关闭前运行 `hc get <terminal> --json`；用 `hc label` 写 `settled`、`snoozed` 和 `herdr.seen`。
-  - `t3-agents`：置顶结束 Snooze 时运行 `hc label <agent> snoozed=`。
-  - `t3-chrome`：不运行程序。它改写已安装的 `layouts/herdr-t3.json` 里的 `traffic_lights`（见品牌栏）。
-  - space 标记：`t3-spaces`、`t3-inbox`、`t3-agents`、`t3-picker`、`t3-new-menu` 在 space 的机器上运行 `git rev-parse --show-toplevel`、`sh -c` 文件检测和 `base64`。
+### 布局、模块与安装
+
+创建 `layouts/herdr-t3.json`、预览 `layouts/herdr-t3.svg`、`mods/t3-*`、`keys.json`。节点 id 唯一，下面结构 id 保持稳定，布局代码靠它们查找：
+
+```text
+root: row, terminal_menu=t3-menu
+├─ sidebar: column [256,min208,max480], chrome
+│  ├─ brand: t3-chrome [40]
+│  ├─ sidebar-lists: stack, active=inbox
+│  │  ├─ lists: column → spaces:t3-spaces / agents:t3-agents [等分,min90]
+│  │  └─ inbox: t3-inbox
+│  └─ sidebar-footer: t3-chrome {footer:true} [44]
+├─ work: column, chrome
+│  ├─ tabs-row: row [40], 不可拖
+│  │  ├─ tabs: t3-tabs [weight1]
+│  │  ├─ actions: t3-actions {block:"actions"} [自定宽]
+│  │  └─ tabs-end: t3-tabs {part:"end",block:"tabs-end"} [自定宽]
+│  ├─ work-body: row, padding[0,8], gap8
+│  │  └─ work-main: stack, active=main
+│  │     ├─ main: active tab, pane header=t3-pane [28,always,top]
+│  │     └─ home-main: 相同 active-tab 框，无标题
+│  ├─ work-bottom-inset: row [8] → bar-measure:t3-tabs {part:"measure"}
+│  └─ status: workspace-status [28,hidden]
+└─ panel: column [weight1,min480,hidden], padding[0,8], chrome
+   ├─ panel-head: t3-chrome {part:"panel"} [40]
+   ├─ panel-body: stack, active=files, background, radius8
+   │  ├─ files: t3-files
+   │  └─ review: review [可选]
+   └─ panel-bottom-inset: row [8]
+floating root: tabs-keys:t3-tabs {part:"keys"}, bottom/end, 不画内容
+```
+
+sidebar/work/panel 列 `resizable:false` 固定内部边界，外分隔线仍可拖。Spaces 传 `{newMenu:"t3-new-menu"}`；Inbox 传 `{newMenu:"t3-new-menu",picker:"t3-picker",home:"t3-tabs.home",menu:"t3-menu"}`。main/home-main 共用前述 background/border/focus/radius/gap/lone。浮动 keys 副本负责命令、Home、space 面板同步；其他 tab 副本共用导航，不各开一份确认。
+
+必需 mod：`t3-chrome`、`t3-spaces`、`t3-agents`、`t3-inbox`、`t3-tabs`、`t3-pane`、`t3-home`、`t3-files`、`t3-new-menu`、`t3-picker`、`t3-actions`、`t3-menu`。有对应的从官方 mod 改，Inbox/Home/Files 新建。保留官方 workspace-status/转圈/程序素材；UI 自带目录 Lucide 24网格/1.75px，文件用 vendored Catppuccin。mod 不能越目录 import，改 `shared/` 源后由 `scripts/sync.sh` 分发，复用命名/状态/pin/labels、焦点/菜单/动画/按钮、侧栏/面板/存储、文件树/菜单/状态模块。
+
+必需 mod 要真实文件（SVG 软链不加载），布局/SVG、按 context 合并 keys 放 `HERDR_APP_HOME` 或 `~/.config/herdr-app`，`layout.switch {"name":"herdr-t3"}` 选中。`scripts/update.sh` 要 `jq/rsync`，先验证旧 layout/keys，再 `rsync --delete` 自己 mod；保留主题/focus/stack 选择、支持的 extra 块、Review `config.json`，只更新已装 extras/主题，repo 键优先、报告替换。设置/pins/用户画不在替换目录。`scripts/sync.sh` 还写安装目录和同级独立仓库，不是只读检查。
+
+Review 复制 `extras/mods/pulls-review`、`extras/mods/review`，按其指引装配 `jin.review`。在 `tabs-end` 前加不同 id `review-bar`，mod `pulls-review`，`{block:"review-bar",toggle:true}`；`panel-body` 末尾加 review 页。更新发现 extra 自动加页、保留 bar/toggle，不把页 id `review` 重用给 bar。壁纸复制自己的 mod；theme-export 是显式显示的零高 work 块，mod `extras/mods/t3-theme-export`，给 Pi 写 `~/.cache/herdr-app-theme.json`。都是可选，[extras 使用文档](docs/user/extras.zh-CN.md) 说明配置、主题、归属。
+
+### API、进程与数据
+
+Herdr API：`spaces/panes/agents/terminals/focused/layout/settings/window/keys`、`run`、`openOverlay/closeOverlay`、`nextCommand`、`shared/setShared`、`exec`、`readTextFile/writeTextFile`、kit views/inputs/Editor/timers。远程按 space 机器带 `on`。可用性以安装 Herdr 生成的声明（`herdr-app check`）为准，不按 Node/浏览器假设。Render 只造 view，setup/读取/input/scroll handle 创建在外。
+
+| 部分 | 外部程序／写入 |
+| --- | --- |
+| Spaces | 只读 `git status/rev-parse`、`hc machine ls --json`；重建机器 Connect：`hc machine rm` 再 `hc machine add` |
+| Inbox／tab 命令／Agents pin | `hc label <address> settled=<ms>:<turn>`、`snoozed=<wake-ms>`（或 `<wake-ms>:held`） 或清空；恢复未读时写 `herdr.seen` |
+| 关闭／导航 | `hc get <terminal> --json`；原生 space/tab/pane 新建/选择/移动/改名/关闭，`agent.focus`、`pane.focus`、`terminal.peek`、split/zoom/`terminal.park` |
+| 布局 chrome | `layout.select/show/hide/resize`；安装布局仅 `traffic_lights` 字段，不整份 `layout.set` |
+| Space 图标 | space 机器上 `git rev-parse --show-toplevel`、`sh -c` 检查、`base64`；app `cache/t3-icons/`，共享图标/颜色信息 |
+| Files | `sh` 列目录、`git check-ignore --stdin`、`git status --porcelain=v2 -z --untracked-files=all`、`git ls-files -co --exclude-standard -z`、后备 `find`、远程 `awk`；文本和 app `cache/t3-files/` 图片（远程 base64），close/下次启动清理 |
+| 文件菜单 | 剪贴板保存/粘贴/恢复、`pane.focus`、`terminal.paste`，支持的平台本机 `open -R`／默认程序打开 |
+| Actions | `terminal.open` 执行 `sh -c`、可选目录，全局列表/上次选择 |
+| Review | `jin.review`、共用只读 Git scope/base/ref helpers，本地 daemon/Review 配置，无远程 |
+| 壁纸 | `osascript/zenity` 选择，`sips/ImageMagick` 转 BMP、base64 解码，`open/xdg-open/explorer` 开 Studio/目录；app-home 壁纸目录 `.ans`、生成 `.tiles/`、临时 `.preview/` |
+
+Git 读取带 `--no-optional-locks -c core.fsmonitor=false`。Spaces 不扫未跟踪，位置/命令/轮次/重连变更才读、前台慢速兜底；Files 包含未跟踪。Files/Review 不用递归 watcher，隐藏/切换停止刷新并作废在途读取，保留最近显示的三个 space 的完整数据；驱逐才释放完整缓存，迟到结果不能补回。
+
+终端事实写 label，跨 mod 偏好/事实 shared，每副本界面 `localStorage`，导航/草稿内存。保留 pins、settings、每 space 面板、Home id、最近 pane、发布的 `{order,view}`、全局 Actions。设置默认 `{afterAway:"home",homeMod:"t3-home"}`（Terminal 是 null）；Actions `{list:[{id,name,command,icon,place,cwd?}],last}`。Files/Review 各记 `nav.open/nav.width/lines.wrap`，Markdown 用 `t3-files.markdown`。重启丢 last-agent/关闭记忆，不丢 pins/settings/labels。
+
+改跨帧数据/文件/迁移前读 [storage](docs/internals/storage.md)，它唯一规定位置/键/归属、label/布局写、页偏好迁移、壁纸生命周期；用 shared store/labels/pins/layout-settings helpers。壁纸分块暂存后原子发布且不覆盖，缓存失败/Cancel 保留已发布源，Unicode 路径安全、预览隔离。用户文件在更新目录外。
+
+脚本入口：`t3-tabs.{panel,review,files,home,settings,new,next,prev,settle,undo}`、`t3-tabs.close-tab:<id>/close-pane:<id>`、`t3-tabs.pin:<address>/unpin:<address>/wake:<address>/snooze:<address>:<wake-ms>`、`t3-files.open:<path>/search:<words>`、`review.scope[:commits]`、`review.base`、`review.settings[:language|agent|model]`。保留各 popup 的关闭键 context，含 `t3-pane/t3-chrome`，否则可能关背后标签。
 
 ## 注意
 
-- 各 mod 用 `shared/sidebar.js` 的 `sidebarParts(layout())` 找侧栏节点。它返回 `rail`（`sidebar` 节点）和 `stack`（`sidebar-lists`），布局里没有时为 `undefined`；没有 stack 不当作 Lists。保留节点 id `sidebar`、`sidebar-lists`、`lists`、`inbox`。
-- 悬停才显示的内容，即使离开事件一直没来，也会随指针消失（`tip.js` 的 `pointerGone`）。Herdr 在指针最后已知的位置还处于元素上一帧的范围内时，会丢弃离开事件，而 GPUI 此时已经记为离开：按键后第一次移动就移出行、按住拖出后松开、指针移出窗口，都会让悬停状态卡住。所以提示和行详情卡显示期间，每 100ms 用 `mouse_position()` 对比元素范围；两者都没有、只靠悬停点亮的内容（`hoverKept`：Agents 分组的箭头、Review 分组的类别图标）也一样。窗口不活动时悬停照常工作，和 T3 一样。无论窗口是否活动，macOS 在指针移出后都不再发送移动事件，所以如果指针停在原处，而按它最后一步的方向再走两步就会越过窗口边缘，就算它已离开窗口。拖拽还会在窗口变为不活动时结束，因为可能永远看不到松开事件。
-- 悬停提示是 `shared/tip.js`（用 `Popup` 照 T3 Code 的 tooltip 绘制，时序自己管：`HoverCard` 在指针停在卡片上时不会关，而弹层即使透明也会挡住下面的内容。在 150ms 内淡入淡出，并相对控件滑动 4px；布局完成后才淡入，每次打开换新 id，因为一个 id 只在首次布局时上报尺寸：12px，最宽 320px，标签加 `keys()` 读到的快捷键（仅当按键和控件做的是同一件事），可带一行暗色说明），各放一份副本。和 T3 一样，提示只用几个词说出控件的名字，控件本身有没有文字都可以加；第二行只用于看不出来的操作（Shift+click）。纯图标按钮和状态标记有提示，程序图标、图钉和机器标记没有。机器名由整行的悬停详情显示。和 T3 一样默认朝上；上方放不下的（品牌栏、标签栏及其中的 Actions 和 Review 栏、Actions 菜单的行、两行的筛选提示）传 `below`：`Popup` 不会像 T3 那样自动翻转。`.tooltip()` 只收字符串，样式由外壳决定。
-- 行内控件按“点它和点整行是否不同”分三类。按钮做整行不做的事（机器行的 `+`、worktree 和子 agent 的折叠、图钉、Inbox 卡片的时钟、Settle、撤销和 Wake、标签的 `×`）：平时暗，有悬停提示，尺寸照 T3：机器行的 `+` 24px、圆角 8、14px 图标，同 T3 文件夹的小按钮（`icon-xs`）；worktree 和子 agent 的折叠 20 高、圆角 4、12px 箭头；图钉 24px、圆角 6、12px 图标；时钟 20 高、圆角 6、12px 图标；Settle 20 高、圆角 6、14px 图标；撤销和 Wake 24 高、圆角 6，图标分别 14px 和 12px；标签的 `×` 16px、圆角 4、12px 图标，放在 24 高标签的槽里。照 T3：侧栏行和卡片里的按钮悬停只变亮成 `foreground`，没有底色（`bg-transparent`、`hover:text-foreground`）；标签的 `×` 用 `raised` 底色，对应 T3 标签关闭按钮的 `bg-muted`。指示属于整行（分组标题的箭头：机器行、Agents 分组、Inbox 的 shelf，点整行就折叠）：无底色、无提示，悬停整行时变亮。标记只表达状态（状态点、`↑2`）：有提示，无底色。栏和标题行用圆角 8 的按钮，悬停有 `hover` 底色，对应 T3 的 ghost 和标题栏按钮：Spaces 和 Agents 标题栏、Inbox 顶栏 28px、16px 图标，品牌栏 28px、16px 图标，标签栏的 `+` 和窗格标题栏 24px、14px 图标。
-- 程序标志统一由 `shared/program.js` 的 `programIcon` 绘制，覆盖 Inbox、Agents 及其详情、标签、窗格标题、Go to 和子 agent 行。各组件保留 T3 原定的图标槽（12、14 或 16px），直接绘制 Herdr 或 mod 提供的素材，保留其画布、染色方式、配色和宽高比。
-- 图标统一用 Lucide（24 网格），和 T3 Code、shadcn/ui 一样；描边 1.75px，同 T3 的 CSS 把 Lucide 的 2px 调细，所以每个 mod 都在 `icons/` 里放自己的副本，`workspace-chrome` 里自带的（`x`、`git-branch`、`panel-left` 等，那里是 2px）也一样；只有自带的转圈图标不是 Lucide，原样使用。此外：窗格标题栏的分屏和缩放在 `t3-pane`，Review 扩展的在 `review/icons/`（包括分类图标，网页版用的是 Phosphor duotone）和 `pulls-review`。不用 Lucide 的：程序图标（各自的标志）、Review 的文件图标（catppuccin）、Windows 窗口按钮、加载转圈。
-- 碰到 index 的 git 命令会再次唤醒目录监听：始终带上 `--no-optional-locks -c core.fsmonitor=false`。
-- Settle 标签大约 0.65 秒后才出现在 `terminals()`：要保留待定值。慢速远程下，同一个标签的多次写入可能以任意顺序落地：有不止一次在途时保留最后一次意图，全部返回后若标签不符就再写一次。
-- macOS 无标题栏时，侧栏隐藏或很窄，标签栏要给窗口按钮留位置（`layout().traffic_lights`）。
-- 窄窗口：`bar-measure`（`t3-tabs`，`part: "measure"`）放在 `work-bottom-inset` 里，工作列宽度小于 1024 逻辑像素（比 T3 的 768 大，因为这里控件要和标签共用一行）时把 `shared("bar.compact")` 设为 true，动作控件和 Review 栏随之去掉文字。放在这里测，是因为这条的宽度不受标签栏影响；测标签区的话，控件一收起标签区就变宽，又会展开。
-- 动作通过 `sh -c` 运行：拿不到你 shell 的别名和函数（需要的话在命令里写 `zsh -ic '…'`），纯 Windows 也没有 `sh`。
-- 从 Review 栏 logo 菜单选的评审和点计数打开的一样照常加载：评审窗格在自己的 0ms 计时器上开始第一次读取（`init` 里的 `cx.timer.after(0, …)`）。窗格是在菜单关闭的同时建出来的，这时直接在 `init` 里发起的读取不会返回，30 秒后超时。
-- `t3-actions` 和标签栏末尾（`t3-tabs`，`part: "end"`）自己调整所在块的宽度：`run("layout.resize", { id: props().block, px })`，宽度取 `on_size_change` 的值除以 `settings().zoom`（它报的是乘过缩放的像素）。`tabs-row` 要保持不可拖动，否则拖动会和它们抢宽度。布局引用了没安装的 mod 时，`herdr-app status` 会报 `no mod folder`：把包括 `t3-actions` 在内的所有 `mods/t3-*` 复制过去。
-- 标签条让当前标签保持可见，移动量最小，和 T3 的 `scrollIntoView({ inline: "nearest" })` 一样。Herdr 的滚动容器不能由脚本移动，所以 `tab-scroll` 负责裁剪，`tab-strip` 用 `.ml()` 偏移；标签的完整宽度来自一份高度为 0 的名字副本，用 `on_size_change` 量出。只在当前标签或可用宽度变化时才移动，所以横向滑开的标签不会被拉回；滚轮仍然用来切换标签。
-- 每个 mod 旁边的 `check*.cjs` 用假的 `herdr` 加载它。`scripts/check.sh` 在已安装的 home 里运行全部检查（有些要在那里找自带图标），并对每个 mod 跑 `herdr-app check`、比对共享模块的副本。每个 mod 还做类型检查（`tsc --noEmit`），选项写在 `check.sh` 里，不读 mod 的 `jsconfig.json`：这个文件被 git 忽略，`herdr-app check` 写的默认版本会让这些 mod 报错。
-
-- 识别 Home 只靠 `shared("t3-home.space")` 里的 id，不看它里面有什么：默认页可能已被关掉。这个 id 只存在本机，而 space 在 core 里，所以它的名字是 `Home` 加一个零宽空格（`\u200b`）：各处看起来都是 Home，也没人打得出来。`t3-tabs` 还不知道 Home 时，把本机上明确命名且名字完全相同的 space 认作 Home；已有的 Home 会被改成这个名字。只是叫 Home 的 space 绝不会被认领：认错会把它藏起来，认不出最多多一个 Home。它的命令由 `t3-tabs` 的标签条副本处理，因为标签栏一直显示，而品牌栏会随侧栏隐藏。`spaces()` 要在命令后一帧左右才更新，所以创建时每一步都等上一步生效。新 space 自带一个 shell，且不能失去最后一个 tab，所以先放入默认页，再关掉 shell。它保留在模型顺序里，而 `t3-spaces` 让这个顺序和列表行保持一致，所以 `ordered()` 只从返回的行里去掉它。
+- 隐藏 mod 不画、不收命令，首次显示才启动。常驻命令/Snooze 放浮动 `tabs-keys`；隐藏后所选模式顺序继续，Inbox 从未启动前自己的顺序除外。模型/远程 label 延迟时保留最后意图，写失败提示。
+- Home 严格识别保护普通 space。释放 agent 所在 Home space 不移动/删除进程，到达恢复目标面板状态。原生关闭可能闪邻居，重启丢关闭历史；原生 Home split 拦不住，zoom 组不能拖，普通列表不能代码滚到行。
+- 保留确认/取消：关闭/Clear 停终端清历史，Remove worktree 删除，删壁纸删源/缓存。Actions 任意 `sh -c`。窗口按钮只 expected 写，整份 `layout.set` 会丢布局点击状态。
+- 图标路径错会静默空白，运行时路径必须 demo 看。mod import 只限自己目录。无 blur/scale/字距 API，用实色；透明 popup 仍挡输入。恢复漏掉的 pointer leave/release，popup 关闭不能重开或关底层标签。
+- 改 render/timer、focus/hover、测量/滚动、Review 文本或壁纸转换时读 [layout implementation](docs/internals/layout-implementation.md)。它收宿主陷阱、不再造可见规格；视觉 token 和存储各有唯一出处。
+- 本文与[英文](RECIPE.md)语义一致，各 ≤60,000 UTF-8 字节，Gallery 会跳过超限 RECIPE。保留名字/简介/预览/五段，主文自足，披露实现陷阱而非移走核心行为。
 
 ## 完成标准
 
-- 每个 `mods/t3-*` 都通过 `herdr-app check`，`layout.switch {"name": "herdr-t3"}` 显示上面描述的窗口。
-- `scripts/check.sh` 输出 `all checks passed`。
-- `cmd-shift-b` 在 Lists 和 Inbox 之间切换侧栏。
-- 在 Inbox 里，对当前查看的已结束 agent 按 `cmd-shift-s`，它被 Settle 并落到 Home，标签栏没有 tab、`+` 和 Actions；在 Home 点 Undo，它回来、回到 Active 原来的位置，标签被清除；在 Home 按 `cmd-]` 打开最上面的卡片；`ctrl-1` 仍是第一个项目。
-- 在 Inbox 里 Settle 一个已结束的 agent，它移入 Settled，侧栏开关的计数里不再算它的完成圆点；再给它发提示，它回来。
-- 在 Lists 里按 `cmd-shift-s` 不起作用；Snooze 中的 agent 工作时那一行照样转圈，结束后不显示完成圆点。
-- 隐藏侧栏时，两个模式下 `cmd-]` 都按该模式的行走、到头就停；选中 Inbox 时，`cmd-shift-s` 能 Settle，标签栏显示 `Settled, Undo` 5 秒。
-- 这次启动后没显示过 Inbox，在 Lists 里给一个 Snooze 中的 agent 发提示，它的 Snooze 结束；在 Lists 里切到另一个 space 的 agent，Inbox 的空间筛选保持不变。
-- 显示 Inbox 时，标签栏只有当前 agent 和不含 agent 的标签，没有标记；Lists 下是全部标签和标记。关掉当前 agent 的整个标签（或最后一个窗格），Inbox 下回到 Home，Lists 下回到这个 space 上一个显示过的标签；两边只关它的窗格且仍有其他窗格时留在该标签；开一个标签再关掉，回到打开它的标签，右边未读的 done 仍是未读。
-- Snooze 一个工作中的 agent 1 小时：它进入 Snoozed，不再计入侧栏切换按钮的工作数；权限提示让它显示为 Needs you，回答后再次隐藏。这时再 Snooze（点时钟或卡片右键的 `Snooze…`），它在这次提示期间保持隐藏；在别处回答后，下一次提示会让它再次出现。
-- worktree space 显示在所属仓库下，checkout 关掉也不散开；远程机器有自己的分组标题。
-- 没有动作时动作块显示 `+ Add action`，宽度正好是控件加 8px；在编辑器里加一个后显示 `▶ <名字> | ▾`，点 `▶` 会开一个以它命名的标签运行命令。
+1. `wc -c RECIPE.md RECIPE.zh-CN.md` 各 ≤60,000，功能覆盖一致、内部链接/preview 存在。`scripts/sync.sh`（计入外部写）后 `scripts/check.sh` 输出 `all checks passed`：副本、mod check/类型、图标、overlay、render/update guards。
+2. `layout.switch {"name":"herdr-t3"}`，`herdr-app status` 无缺 mod/重绘警告。独立 demo：`scripts/demo/stage.sh up`、`scene <name>`、`do herdr-app shot <file>`、`down`。默认 256px 侧栏及窄/明暗/zoom 整窗截图无裁切、表面和窗口按钮正确。启动需 GitHub，离线用临时副本改本地 `repos.sh`。
+3. Inbox Settle/Un-settle/Undo/新工作、两模式 pin、拖/划/取消/Clear：位置/pin 还原、新工作回来、Clear 先问且保留当前 tab、Home/Next card 遵偏好。后台不跳，Lists Settle 无作用；隐藏侧栏保持顺序/不循环、5s Undo，Lists 不动 Inbox 筛选。
+4. Snooze working/pinned，权限/回答、Inbox 未启动时 Lists 失败/当前新轮，前后台到期：隐藏计数、临时 Needs you、Woke、pin 符合规则。Custom 无效输入保持打开，取消不变。
+5. current/held/away/fresh 面包屑、同级/子 agent、zoom/滚动/拖动与卡片焦点一致。关前后台 tab/最后 pane/分屏 pane：Home/前标签/留原处正确，未读邻居保留、有程序先问。Overlay 上四个关闭键不关底层。
+6. Home 改 mod/Terminal、shell 起 agent：普通 space 原地保留 agent，下次 Home 干净，项目编号稳定。New/Go to：之前 pane/名字命中在前、远程信息、shell 重用、机器/footer 键盘可达、终端 Tab 保留。Worktree 折/拖/checkout 缺席时分组编号正确。
+7. Actions 加/改/删/运行 tab/右/下/目录：必填、确认、上次选择、shell 保留、窄栏宽度。
+8. Files 本地/远程、Git/非 Git、文本/Markdown/图/二进制/缺失/失败：只读根、树/搜索/顺序/换行和空态-vs-Retry 正确。切四 space/隐藏回放验证缓存/I/O 有界。每 space 面板/page/maximize/Home 恢复，放大时快捷开关/键盘关闭有效，两页位置/宽/换行独立。
+9. Review scope/base/remotes/commits/groups/reviewed/j/k/Analyze/Unicode/二进制/空/失败：树/diff 同序，无误分析，安全换行，吸顶头不透明、勾选 alpha 正确。
+10. 壁纸三样式、Apply/Cancel/缓存失败重试、Studio/手动导入、Unicode/短横/隐藏名/密集阴影、转换中确认/取消删除：构图/主题/角落控件正确，不改原图、不重复自己的保存，失败 Apply 后取消保留已发布源，删后不复活。
+
+通过代码检查不能替代可见/真实输入验证。未试真实点击须说明，只清理本次 demo 创建的资源。

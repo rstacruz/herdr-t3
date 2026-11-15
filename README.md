@@ -12,12 +12,11 @@ scripts/update.sh
 
 ### Early settle
 
-Right-click an Inbox card for its menu:
+Right-click an Inbox card, an Agents row or the tab bar's title for the agent's menu:
 
 - **Settle** works while the agent is still working. It stays settled through that run and the turn it ends, unless it needs you; the turn after brings it back.
 - **Mark unread** puts an idle agent back to Done, and brings it back if it was settled.
-- **Snooze…** opens the card's snooze menu under its clock.
-- The space's own items (Rename space, Labels…, worktrees, Close space) follow.
+- Pin, Snooze, Rename, Copy address and Close are the menu's, as upstream draws them. Snooze opens its times beside the menu, and a card that needs you can be snoozed through that need.
 
 ### Snooze what needs you
 
@@ -28,7 +27,7 @@ Right-click an Inbox card for its menu:
 
 Give spaces labels, and filter by them.
 
-- **Labels…** in a space's menu (or an Inbox card's) opens the `t3-labels` dialog. Click a label to toggle it; type a new one and press Enter to add it.
+- **Labels…** in a space's menu opens the `t3-labels` dialog. Click a label to toggle it; type a new one and press Enter to add it.
 - The Spaces list heading has a label filter. Click a label to show only its spaces; shift-click to pick several.
 - The Inbox's space filter lists labels too. Spaces and labels add up: a card shows when its space is picked or has a picked label.
 - Labels are stored per machine in `~/.config/herdr-space-labels.json`, so every screen showing that machine's spaces sees the same ones.

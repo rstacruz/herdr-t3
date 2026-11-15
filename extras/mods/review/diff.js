@@ -2,11 +2,20 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list, TextView } from "gpui-base";
 import { notify, theme } from "herdr";
 import { review } from "./daemon.js";
-import { clipRows, codeInset, FILE, noteWidth, ROW } from "./rows.js";
+import { clipRows, codeInset, FILE, noteWidth, ROW, wrapRow } from "./rows.js";
 import { colors } from "./review-load.js";
-import { LU, MONO, zoom, isLight, checkMark, diffStats, popover } from "./controls.js";
+import { LU, mono, zoom, isLight, checkMark, diffStats, popover } from "./controls.js";
 import { fileStatus } from "./files.js";
+import { emptyState } from "./panel-states.js";
+import { holdWidth } from "./nav-column.js";
 
+// The runs measured for a character's width, and a wide one's: long enough that rounding the whole to a pixel doesn't matter.
+const MEASURED = "0".repeat(100), MEASURED_WIDE = "中".repeat(100);
+// A run of the code font, drawn unseen under the list until its width is known, for where wrapped lines break (rows.js
+// wrapColumns); again when the font is changed in the settings.
+const measureRun = (id, text, set) => div().id(id).absolute().top(0).left(0).opacity(0).font_family(mono()).text_size(12).whitespace_nowrap()
+  .on_size_change((size, cx) => { if (size.width > 0) { set(size.width / zoom() / text.length); cx.notify(); } })
+  .child(text);
 // How long a sideways scroll's bars stay after it stops (ms).
 const BARS_LINGER = 1000;
 
@@ -125,18 +134,14 @@ export function diffView(view, t) {
     .child(div().id("review-diff-area").flex_1().min_h(0).overflow_hidden().relative().text_size(12)
       .on_size_change((size, cx) => {
         view.diffHeight = size.height / zoom();
-        if (Math.abs(size.width / zoom() - view.view) >= 1) { view.view = size.width / zoom(); cx.notify(); }
+        // Wrapped lines are cut again only once the width holds (view.wrapHold): a panel dragged changes it every frame, and
+        // cutting the rows in view anew each time, as new text for Herdr to lay out, was most of a step (76ms against 27 unwrapped).
+        if (Math.abs(size.width / zoom() - view.view) >= 1) { view.view = size.width / zoom(); holdWidth(view.wrapHold, view.view, (ms, f) => cx.timer.after(ms, f)); cx.notify(); }
       })
       // Code scrolls sideways by the wheel: split, each side under the pointer; the full-width rows under either.
       // Headers and notes stay put, and the list keeps the vertical.
       .on_scroll_wheel((event, cx) => {
         let moved = false, sideways = false;
-        // How far this run down has gone (a negative delta scrolls down, as sideways); any scroll up restarts it.
-        const dy = event.delta.y / zoom();
-        if (dy > 0) view.scrolledDownBy = 0;
-        else if (dy < 0) view.scrolledDownBy -= dy;
-        const hide = view.scrolledDownBy > 300;
-        if (hide !== view.headerHidden) { view.headerHidden = hide; moved = true; }
         for (const side of view.splitShown() ? [(event.local_position?.x ?? 0) / zoom() < view.view / 2 ? 0 : 1, 2] : [2]) {
           const x = Math.min(view.sideMax(side), Math.max(0, view.shift[side] - event.delta.x / zoom()));
           if (x !== view.shift[side]) { view.shift[side] = x; moved = sideways = true; }
@@ -150,6 +155,9 @@ export function diffView(view, t) {
       })
       // A row reports only its key: where the press landed says which part of a file's header it was for.
       .on_mouse_down("left", (event) => { view.pressX = (event.local_position?.x ?? 0) / zoom(); view.pressY = (event.local_position?.y ?? 0) / zoom(); })
+      // A wide character's own: a code font seldom has CJK, and the one drawn in its place makes it about 1em, not 2 columns.
+      .when(!view.charWidth || view.charFont !== mono(), el => el.child(measureRun("review-char", MEASURED, (w) => { view.panel.charWidth = w; view.panel.charFont = mono(); })))
+      .when(!view.wideWidth || view.wideFont !== mono(), el => el.child(measureRun("review-wide", MEASURED_WIDE, (w) => { view.panel.wideWidth = w; view.panel.wideFont = mono(); })))
       // A blank after the items (trailing) lets the last header reach the top.
       .child(v_virtual_list("review-diff", items.length + 1, view.listSizes(), (i) => items[i]?.key ?? "end",
         // The range drawn is the only word on where the list is scrolled, and its frames on when a scroll has landed.
@@ -168,7 +176,7 @@ export function diffView(view, t) {
         }))
       // Folding or marking the file from its stuck header folds it away under the top: its header, above the view, comes
       // back to the top in one scroll (the list scrolls to the near edge).
-      .when(Boolean(sticky), el => el.child(div().id("sticky-file").absolute().top(0).left(0).w_full()
+      .when(Boolean(sticky), el => el.child(div().id("sticky-file").absolute().top(0).left(0).w_full().bg(t.background)
         .on_click((_e, cx) => {
           const open = !view.collapsed.has(sticky.path);
           view.headerPress(sticky, view.pressX ?? 0, cx);
@@ -180,8 +188,9 @@ export function diffView(view, t) {
       .child(Scrollbar.vertical("review-diff").absolute().inset_0())
       .children(view.hbars(t))
       // As T3's DiffPanel with nothing to show: a diff with no files has no group either.
-      .when(!items.length, el => el.child(div().id("review-empty").absolute().inset_0().px(20).flex().items_center().justify_center().text_center().text_color(t.dim)
-        .child(view.review?.files.length ? "No files in this group" : "No changes in this range"))));
+      .when(!items.length, el => el.child(div().absolute().inset_0().child(view.review?.files.length
+        ? emptyState(t, "review-empty", `${LU}/file-diff.svg`, "No files in this group", null)
+        : emptyState(t, "review-empty", `${LU}/file-diff.svg`, "No changes", "Nothing to review in this range.")))));
 }
 
 // Code scrolls sideways by the wheel alone: while it does, as T3's ScrollArea, a 6px bar says where it is, for each
@@ -200,16 +209,21 @@ export function hbars(view, t) {
 }
 
 // One side of a line: its line numbers (one in split, old and new in unified), its sign and its code, slid left by `shift`.
-function drawCode(t, row, numbers, shift = 0) {
+// `wrapped`: the row's lines as rows.js's wrapRow cut them, each ROW tall, the numbers and sign beside the first.
+function drawCode(t, row, numbers, shift = 0, wrapped = null) {
   if (!row) return div().flex_1().min_w(0).h_full().bg(t.canvas);
   const tint = row.kind === "+" ? t.ansi2 + "1c" : row.kind === "-" ? t.ansi1 + "1c" : null;
+  const code = (tokens) => spans(tokens).map(([text, color]) => div().flex_none().text_color(color ?? t.foreground).child(text));
   // Herdr ships JetBrains Mono; Geist Mono, a common terminal font here, draws `=>` over the space before it.
-  return h_flex().flex_1().min_w(0).h_full().items_center().overflow_hidden().font_family(MONO).when(Boolean(tint), el => el.bg(tint))
-    .children(numbers.map(number => div().w(40).flex_none().pr(6).text_right().text_color(t.dim).child(number === undefined ? "" : String(number))))
-    .child(div().w(12).flex_none().text_color(row.kind === "+" ? t.ansi2 : row.kind === "-" ? t.ansi1 : t.dim).child(row.kind === " " ? "" : row.kind))
-    .child(h_flex().flex_1().min_w(0).overflow_hidden().whitespace_nowrap()
-      .child(h_flex().flex_none().relative().left(-shift)
-        .children(spans(row.tokens).map(([text, color]) => div().flex_none().text_color(color ?? t.foreground).child(text)))));
+  return h_flex().flex_1().min_w(0).h_full().overflow_hidden().font_family(mono()).when(Boolean(tint), el => el.bg(tint))
+    .when(!wrapped, el => el.items_center()).when(Boolean(wrapped), el => el.items_start())
+    .children(numbers.map(number => div().w(40).flex_none().pr(6).text_right().text_color(t.dim)
+      .when(Boolean(wrapped), el => el.h(ROW).flex().items_center().justify_end()).child(number === undefined ? "" : String(number))))
+    .child(div().w(12).flex_none().text_color(row.kind === "+" ? t.ansi2 : row.kind === "-" ? t.ansi1 : t.dim)
+      .when(Boolean(wrapped), el => el.h(ROW).flex().items_center()).child(row.kind === " " ? "" : row.kind))
+    .child(wrapped
+      ? v_flex().flex_1().min_w(0).overflow_hidden().children(wrapped.map(tokens => h_flex().h(ROW).flex_none().items_center().whitespace_nowrap().children(code(tokens))))
+      : h_flex().flex_1().min_w(0).overflow_hidden().whitespace_nowrap().child(h_flex().flex_none().relative().left(-shift).children(code(row.tokens))));
 }
 
 function diffItem(view, t, item) {
@@ -241,7 +255,7 @@ function diffItem(view, t, item) {
         .child(div().min_w(0).truncate().child(item.group.label));
     case "hunk":
       // Hunk headers on the raised tone, as Herdr's own changes diff draws them, 11px as T3's hunk separators; `@@` is code, so mono.
-      return div().w_full().h(item.size).px(12).flex().items_center().bg(t.raised).font_family(MONO).text_size(11).text_color(t.dim).truncate().child(item.text);
+      return div().w_full().h(item.size).px(12).flex().items_center().bg(t.raised).font_family(mono()).text_size(11).text_color(t.dim).truncate().child(item.text);
     case "note": {
       // As the app's AnalysisNoteCard: a sparkle, or a critical note's mark, then its Markdown in the UI font.
       // A file's own notes run across the file under its header; a line's sits under the line as a card.
@@ -268,14 +282,16 @@ function diffItem(view, t, item) {
   }
 }
 
-// One code line of a run, ROW tall.
+// One code line of a run, ROW tall; wrapped, as many ROWs as its lines (a pair, its longer side's), as buildItems counts them.
 function diffLine(view, t, kind, line) {
+  const cols = view.wrapCols?.[kind], cut = (row) => cols && row ? wrapRow(row, cols, view.wrapCols.wide) : null;
   if (kind === "pair") {
-    return h_flex().w_full().h(ROW)
-      .child(drawCode(t, line.left, [line.left?.old], Math.min(view.shift[0], view.sideMax(0))))
+    const left = cut(line.left), right = cut(line.right);
+    return h_flex().w_full().h(cols ? Math.max(left?.length ?? 1, right?.length ?? 1) * ROW : ROW)
+      .child(drawCode(t, line.left, [line.left?.old], Math.min(view.shift[0], view.sideMax(0)), left))
       .child(div().w(1).h_full().flex_none().bg(t.border))
-      .child(drawCode(t, line.right, [line.right?.new], Math.min(view.shift[1], view.sideMax(1))));
+      .child(drawCode(t, line.right, [line.right?.new], Math.min(view.shift[1], view.sideMax(1)), right));
   }
-  const numbers = kind === "solo" ? [line.kind === "-" ? line.old : line.new] : [line.old, line.new];
-  return h_flex().w_full().h(ROW).child(drawCode(t, line, numbers, Math.min(view.shift[2], view.sideMax(2))));
+  const numbers = kind === "solo" ? [line.kind === "-" ? line.old : line.new] : [line.old, line.new], lines = cut(line);
+  return h_flex().w_full().h(lines ? lines.length * ROW : ROW).child(drawCode(t, line, numbers, Math.min(view.shift[2], view.sideMax(2)), lines));
 }

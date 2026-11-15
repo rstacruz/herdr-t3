@@ -1,92 +1,219 @@
-// A pulls.review review drawn in a pane, beside the agent that wrote the change: groups (the AI
-// analysis, else rule-based), each group's files and their diffs, reviewed marks, one commit at
-// a time. Opened by the pulls-review mod in "herdr" mode with props `{ root, page, n, analyze }`;
-// later opens in the same space arrive through shared(PANE). Everything comes from the jin.review daemon.
+// A pulls.review review, the `review` page of the window's space panel (docs/adr/0011): groups (the AI analysis, else
+// rule-based), each group's files and their diffs, reviewed marks, one commit at a time. One copy serves every space and
+// shows the active one's review. The pulls-review mod's "herdr" mode and the header's scope menu ask for a page through shared(PANE)
+// `{ space, root, page, base?, n, analyze }`. The Files page asks nothing of it (docs/adr/0015).
+// Everything comes from the jin.review daemon, which listens on this machine only: a remote space has no review.
 
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, h_resizable, resizable_panel, VirtualListScrollHandle, InputState } from "gpui-base";
-import { focused, panes, props, setShared, shared, spaces, theme, window as appWindow } from "herdr";
-import { buildItems, contentWidth, groupFiles, pageLabel, rowsToAsk, LOOKAHEAD } from "./rows.js";
-import { PANE, WIDE, SPLIT_MIN, DISABLED, pref, setPref, zoom, button } from "./controls.js";
+import { v_flex, h_flex, VirtualListScrollHandle, InputState, TextView } from "gpui-base";
+import { exec, nextCommand, setShared, shared, spaces, theme, window as appWindow } from "herdr";
+import { panelState, hidePanel } from "./panel.js";
+import { buildItems, contentWidth, groupFiles, pageLabel, rowsToAsk, wrapColumns, CHAR, LOOKAHEAD } from "./rows.js";
+import { PANE, LU, SPLIT_MIN, DISABLED, pref, setPref, zoom, subState } from "./controls.js";
+import { subOpened } from "./submenu.js";
 import { colors, loadReview, loadRows, pollReview, applyReview, analyzeReview } from "./review-load.js";
-import { loadSettings, models, submitModel, pageRows, locale, settingsPanel } from "./settings.js";
-import { diffCommits, showPage, commitRows, commitMenu } from "./commits.js";
-import { groupSidebar, groupHeader, groupTabs } from "./groups.js";
-import { aside } from "./files.js";
+import { loadSettings, models, submitModel, pageRows, locale, settingsPanel, settingsSub, openPage } from "./settings.js";
+import { diffCommits, scopeList, pickListed, openScope, openScopePage, scopeMenu, scopeSub, baseList, openBase, pickBase, baseMenu, chosenBase, changesPage } from "./scope.js";
+import { fileTree, navHead, menuItems, openTo, showGroup } from "./files.js";
+import { groupTabs } from "./groups.js";
+import { fileMenuView } from "./file-menu.js";
+import { loadingState, emptyState, errorBar } from "./panel-states.js";
+import { navToggle } from "./nav-column.js";
+import { withNav, navOpen } from "./nav-column.js";
 import { setReviewed, toggleFull, headerPress, diffView, hbars, foldMenu } from "./diff.js";
 import { analysisStatus, statusPanel, head, header } from "./header.js";
 import { reviewKey } from "./keys.js";
+import { wrapLines, migratePagePrefs } from "./store.js";
 
-// As the app's group aside beside the diffs at `lg`: a fifth of the row, at least 280, at most half.
-const ASIDE_MIN = 280, ASIDE_MAX_RATIO = 0.5;
+// A request this young when its space's review starts is the click that opened the panel; an older one was already shown.
+const FRESH = 10000;
+// Its own writes, until mods/review was a pane in a tab: nothing reads them now.
+const RETIRED = [`${PANE}.titles`, `${PANE}.program`];
+// `wrap` is the page's own lines.wrap now: migratePagePrefs takes a choice made here along before it goes.
+const GONE = ["openIn", "fileList", "groupNav", "wrap"];
+// After a click or a key picks a file, the list is still scrolling to it this long: the file at its top isn't the one in front yet.
+const PICKED = 600;
+// The spaces shown last whose reviews stay whole; an older one's is read again when it shows (evict).
+const KEEP = 3;
 
-export default class ReviewPane extends View {
+export default class ReviewPanel extends View {
   init(_props, cx) {
-    const p = props() ?? {};
-    // The page a count's click asked to analyze, until its first read. Props outlive a restart, where a stale ask mustn't start a paid run.
-    this.analyzeFor = p.analyze === true && localStorage.getItem("tab") === null ? p.page : null;
-    this.tab = localStorage.getItem("tab") ?? focused()?.tab;
-    localStorage.setItem("tab", this.tab ?? "");
-    this.root = localStorage.getItem("root") ?? p.root;
-    this.page = localStorage.getItem("page") ?? p.page;
-    this.base = localStorage.getItem("base") ?? this.page;
-    this.handled = Number(localStorage.getItem("handled") ?? p.n ?? 0);
-    // The one popup open over the diff, if any: "settings", "status" or "fold".
+    migratePagePrefs();
+    for (const key of RETIRED) if (shared(key) != null) setShared(key, null);
+    // Settings gone since (where a review opened; the files as a list): dropped from what's kept.
+    const prefs = shared(`${PANE}.prefs`);
+    if (prefs && GONE.some(k => k in prefs)) setShared(`${PANE}.prefs`, Object.fromEntries(Object.entries(prefs).filter(([k]) => !GONE.includes(k))));
+    // Each space's review, by space id, for this run; what each shows is kept in review.shown.
+    this.panel = this; this.bySpace = new Map();
+    // The one popup open over the diff, if any: "settings", "status", "fold" or "scope".
     this.popup = null; this.closedPopup = null; this.popupClosedAt = 0;
     this.agents = null; this.shared = null; this.settingsError = null;
-    this.height = 600; this.headerHidden = false; this.scrolledDownBy = 0; this.baseCommits = null;
+    this.height = 600; this.width = 900; this.view = 600; this.diffHeight = 600; this.frames = 0;
+    // A character's width in the code's font, measured once (diff.js), for where wrapped lines break; every space's review shares it.
+    this.charWidth = null; this.wideWidth = null;
     // The model field searches the agent's catalog; Enter picks the model it names exactly, else the text as typed.
     this.modelInput = InputState.new({ placeholder: "Search or type a model" });
     // The row lit on a settings page and in the fold menu, by keys or the pointer; Enter on one picks it.
     this.pageAt = -1; this.foldAt = -1;
-    this.modelInput.on("change", (_e, cx) => { this.pageAt = -1; cx.notify(); });
-    this.modelInput.on("submit", (_e, cx) => submitModel(this, cx));
-    // The commit list's search, and the row lit in it.
-    this.commitSearch = InputState.new({ placeholder: "Search commits" });
-    this.commitAt = 0;
-    this.commitSearch.on("change", (_e, cx) => { this.commitAt = 0; this.scrollTop = { ...this.scrollTop, "commit-list": 0 }; cx.notify(); });
-    this.commitSearch.on("submit", (_e, cx) => { const row = this.commitRows()[this.commitAt]; if (row) showPage(this, row.page, cx); });
+    // The inputs are the panel's; what they act on is the space shown.
+    this.modelInput.on("change", (_e, cx) => { const s = this.shown(); if (s) s.pageAt = -1; cx.notify(); });
+    this.modelInput.on("submit", (_e, cx) => { const s = this.shown(); if (s) submitModel(s, cx); });
+    // The scope menu's lit row, its submenu open (null or "commits"), the row lit there, and its search: Enter picks that row.
+    this.scopePage = null; this.scopeAt = -1; this.scopeListAt = -1;
+    this.scopeSearch = InputState.new({ placeholder: "Search" });
+    this.scopeSearch.on("change", (_e, cx) => { const s = this.shown(); if (!s) return; s.scopeListAt = 0; s.scrollTop = { ...s.scrollTop, "scope-list": 0 }; cx.notify(); });
+    this.scopeSearch.on("submit", (_e, cx) => { const s = this.shown(); if (s) pickListed(s, scopeList(s)[s.scopeListAt], cx); });
+    // The base picker's search, its lit row, and where its button is: Enter picks that row.
+    this.baseAt = 0; this.baseX = null;
+    this.refSearch = InputState.new({ placeholder: "Search refs" });
+    this.refSearch.on("change", (_e, cx) => { const s = this.shown(); if (!s) return; s.baseAt = 0; s.scrollTop = { ...s.scrollTop, "base-list": 0 }; cx.notify(); });
+    this.refSearch.on("submit", (_e, cx) => { const s = this.shown(), item = s && baseList(s)[s.baseAt]; if (item) pickBase(s, item.value, cx); });
     // The colors the rows on screen are in.
     this.colorsKey = JSON.stringify(colors(theme()));
-    this.review = null; this.error = null; this.version = 0; this.width = 900; this.view = 600; this.diffHeight = 600; this.frames = 0; this.sideWidth = [0, 0, 0]; this.shift = [0, 0, 0];
-    this.startingUntil = 0; this.loading = null; this.loadId = 0;
-    this.marks = 0; this.marking = 0;
-    this.collapsed = new Set(); this.full = new Map(); this.parts = new Map(); this.seen = new Set(); this.folded = new Set();
     this.handle = cx.focus_handle();
-    this.scroll = VirtualListScrollHandle.new();
-    this.barsOn = false; this.barsRun = 0;
-    // A menu can create this pane: start I/O in the pane's own callback so closing the menu can't cancel its answer.
-    cx.timer.after(0, (cx) => this.load(cx));
-    // While a run goes the pane follows it; otherwise the folder watch and a slow timer catch new diffs.
-    cx.timer.every(1500, (cx) => { if (this.analyzing()) this.poll(cx); });
-    // Unseen, the slow timer and the watch only note a read is due; it follows within a second of the pane being seen again.
-    // Hidden panes keep their timers, and a run's poll goes on: tabs show its state.
-    cx.timer.every(15000, (cx) => this.refresh(cx));
-    cx.timer.every(1000, (cx) => { if (this.dirty && this.onScreen()) this.load(cx); });
+    // A row's right-click menu takes the keyboard while it's open (file-menu.js).
+    this.menuHandle = cx.focus_handle();
+    // Whether the file tree's column is open: the page's, for every space.
+    this.navOpen = navOpen();
+    // `review.scope` (a key, or `herdr-app do`) toggles the shown review's scope menu, as its button does; `scope:commits`
+    // opens it with that submenu; `review.base` the base picker the same way. `review.settings` the same for the settings, `settings:language`, `:agent`
+    // or `:model` with that submenu. `review.close`, cmd-w while it has the keyboard, closes the panel as T3's does.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const [name, page] = (await nextCommand()).split(":"), s = this.shown();
+        if (name === "close") hidePanel();
+        if ((name !== "scope" && name !== "settings" && name !== "base") || !s?.page) continue;
+        if (!page || s.popup !== name) s.togglePopup(name, cx);
+        if (name === "scope" && page === "commits") openScopePage(s, page, cx, 0);
+        if (name === "settings" && ["language", "agent", "model"].includes(page)) openPage(s, page, cx);
+        cx.notify();
+      }
+    });
+    // While a run goes the review follows it; otherwise a slow timer reads it while it's seen. Nothing watches the folder:
+    // the host can't end a watchFolder, and an unseen review keeps nothing going.
+    // Every space's: the tab bar's Review bar and the panel head show how each space's run goes.
+    const each = (f) => { for (const s of this.bySpace.values()) f(s); };
+    cx.timer.every(1500, (cx) => each(s => { if (s.analyzing()) s.poll(cx); }));
+    cx.timer.every(15000, (cx) => each(s => s.refresh(cx)));
+    // Unseen, a review is due a read, which follows within a second of it being seen again. A space closed leaves nothing.
+    cx.timer.every(1000, (cx) => {
+      const ids = new Set(spaces().map(s => s.id));
+      for (const [id, s] of this.bySpace) {
+        if (!ids.has(id)) { s.evict(); this.bySpace.delete(id); if (this.front === s) this.front = null; }
+        else if (!s.onScreen()) s.dirty = true;
+        else if (s.dirty) s.load(cx);
+      }
+    });
     // Scrolling redraws only the list. What the rest shows of where it is - the aside's group, the files and groups in view,
     // as the app's scroll spy marks them - is checked here and redrawn when it moved.
     // Off screen, what the list shows can't move: nothing to measure.
-    cx.timer.every(150, (cx) => { if (!this.onScreen()) return; const spied = this.spied(); if (spied !== this.lastSpied) { this.lastSpied = spied; cx.notify(); } });
+    // The file at the list's top is the one in front, as the diff scrolls.
+    cx.timer.every(150, (cx) => {
+      const s = this.shown();
+      if (!s?.onScreen()) return;
+      const top = Date.now() - s.pickedAt > PICKED && s.topFile();
+      if (top) s.current = top;
+      const spied = s.spied();
+      if (spied !== s.lastSpied) { s.lastSpied = spied; cx.notify(); }
+    });
   }
 
-  remember() {
-    for (const [key, value] of Object.entries({ root: this.root, page: this.page, base: this.base, handled: String(this.handled) })) localStorage.setItem(key, value);
+  // The active space's review, if it has one yet.
+  shown() { return this.panel.bySpace.get(spaces().find(s => s.active)?.id) ?? null; }
+
+  /**
+   * A space's review, made the first time it shows. It inherits the panel (Object.create), so the methods and helpers that
+   * take `view` work on it unchanged, while what it writes - and what its reads write when they answer, after the space has
+   * changed - stays its own.
+   */
+  spaceReview(space, cx) {
+    const panel = this.panel;
+    let s = panel.bySpace.get(space.id);
+    if (!s) { s = Object.create(panel); s.begin(space.id); panel.bySpace.set(space.id, s); }
+    // Shown after another: the latest again, on its own timer, as is its list's scroll and its first read: none can start
+    // while drawing (gpui-kit.d.ts). A request in that draw has asked for a read already.
+    if (panel.front !== s) { panel.front = s; cx.timer.after(0, (cx) => panel.bring(s, space, cx)); }
+    return s;
+  }
+
+  bring(s, space, cx) {
+    if (this.bySpace.get(s.space) !== s) return;
+    this.bySpace.delete(s.space); this.bySpace.set(s.space, s);
+    [...this.bySpace.values()].slice(0, -KEEP).forEach(old => old.evict());
+    if (!s.scroll) {
+      s.evicted = false; s.scroll = VirtualListScrollHandle.new();
+      if (!s.root) s.start(space, cx); else if (!s.loading && !s.review) s.load(cx);
+    }
+    cx.notify();
+  }
+
+  // Past the KEEP spaces shown last, a review keeps only what it was reading - its page, group, file and folds - and a run
+  // going, for the status poll: its diff, rows, lists and scroll go, and a read out for it is dropped when it lands.
+  evict() {
+    if (this.evicted) return;
+    // A run just asked for (startingUntil) keeps its state as it was, so the poll still sees it start, or a "not running" before then end nothing.
+    const a = this.runState();
+    this.awayAnalysis = this.analyzing() ? { state: a?.state ?? "none", error: a?.error ?? null } : null;
+    this.evicted = true; this.dirty = true; this.restoreTo = this.current;
+    this.loadId++; this.loading = null; this.again = false; this.stale = false; this.error = null;
+    this.review = null; this.switching = false; this.baseCommits = null; this.full.clear(); this.parts.clear();
+    this.scroll = null; this.wrapHold = {};
+    // Back to the panel's own, none, as at begin.
+    for (const key of ["itemList", "itemsId", "sizes", "visible", "paths", "pathsOf", "treeOf", "tabStats", "settling", "lastSpied", "revealedCurrent", "scopeGit", "picks", "refs"]) delete this[key];
+  }
+
+  // A space's review's own state, at its start: what review.shown says it showed, and requests from before it ignored.
+  begin(space) {
+    const was = shared(`${PANE}.shown`)?.[space];
+    this.space = space; this.root = was?.root ?? null; this.page = was?.page ?? null; this.base = was?.base ?? this.page;
+    this.handled = Date.now() - FRESH; this.noRepo = false; this.evicted = false; this.awayAnalysis = null;
+    // The width wrapped lines are cut at (`at`), a moment behind a width that's moving (nav-column.js holdWidth).
+    this.wrapHold = {};
+    // The page a count's click asked to analyze, until its first read.
+    this.analyzeFor = null; this.baseCommits = null;
+    this.review = null; this.error = null; this.version = 0; this.sideWidth = [0, 0, 0]; this.shift = [0, 0, 0];
+    this.startingUntil = 0; this.loading = null; this.loadId = 0; this.marks = 0; this.marking = 0;
+    this.flipped = new Set(); this.focusPath = null; this.pickedAt = 0;
+    this.collapsed = new Set(); this.full = new Map(); this.parts = new Map(); this.seen = new Set();
+    this.scroll = null; this.barsOn = false; this.barsRun = 0;
+  }
+
+  // Nothing shown in this space yet: its folder's repository, on its branch's Changes as T3's diff panel opens, against the
+  // base picked for the space; a detached HEAD, with no branch, on its uncommitted changes.
+  start(space, cx) {
+    // Evicted or closed meanwhile (evict bumps loadId): a late answer sets nothing and reads no further.
+    const id = this.loadId, live = () => !this.evicted && id === this.loadId;
+    cx.spawn(async (cx) => {
+      const git = (args) => exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", ...args], { cwd: space.folder || undefined }).catch(() => null);
+      const top = await git(["rev-parse", "--show-toplevel"]);
+      if (!live()) return;
+      if (this.root || top?.code !== 0) { this.noRepo = !this.root; return cx.notify(); }
+      this.root = top.stdout.trim();
+      const head = await git(["symbolic-ref", "--short", "-q", "HEAD"]), branch = head?.code === 0 && head.stdout.trim();
+      if (!live()) return;
+      if (!this.page) { this.page = this.base = branch ? changesPage(chosenBase(this), branch) : "/worktree"; this.load(cx); }
+      cx.notify();
+    });
   }
 
   open(page, cx) {
     if (page === this.page) return;
     // The old page stays on screen, dimmed and inert, until the new one's read replaces it: apply() then resets what belonged to it.
-    this.page = page; this.switching = Boolean(this.review); this.error = null; this.analyzeError = null; this.startingUntil = 0; this.headerHidden = false;
+    this.page = page; this.switching = Boolean(this.review); this.error = null; this.analyzeError = null; this.startingUntil = 0;
     this.wasRunning = false; this.news = null;
-    this.remember(); this.version++;
+    this.version++;
     this.load(cx);
   }
 
   // No review shown, or none yet: what belonged to the last one goes with it.
-  forget() { this.review = null; this.switching = false; this.groupKey = null; this.current = null; this.full.clear(); this.parts.clear(); this.shift = [0, 0, 0]; }
+  forget() { this.restoreTo = null; this.review = null; this.switching = false; this.groupKey = null; this.current = null; this.full.clear(); this.parts.clear(); this.shift = [0, 0, 0]; }
 
-  // The window active and this pane's tab the one shown.
-  onScreen() { return appWindow()?.active !== false && spaces().some(s => s.active && s.tabs.some(c => c.id === this.tab && c.active)); }
+  // The window active, this review's space the active one, and the panel open on its review page.
+  onScreen() {
+    if (appWindow()?.active === false || !spaces().some(s => s.active && s.id === this.space)) return false;
+    const p = panelState();
+    return p.open && p.page === PANE;
+  }
 
   refresh(cx) { if (this.onScreen()) this.load(cx); else this.dirty = true; }
 
@@ -101,37 +228,35 @@ export default class ReviewPane extends View {
   analyze(cx, force) { return analyzeReview(this, cx, force); }
 
   // A run going, as the app's from the click: the daemon answers before the worktree server has started it, and a read until then finds none.
-  analyzing() { return (!this.switching && this.review?.analysis.state === "running") || Date.now() < this.startingUntil; }
+  analyzing() { return this.runState()?.state === "running" || Date.now() < this.startingUntil; }
 
-  // What its tab and pane header show (t3's name.js), as the word an agent would report: a run going, then how it ended
-  // until the tab is looked at. In the pane, the button keeps a failure.
-  // shortcut: a pane starts only when shown, so the Review bar drops a run's word from before a restart (its main.js); with no bar in the layout, that word stays until its tab is shown.
+  // The run's state: the review's, or, evicted, what was kept of it.
+  runState() { return this.switching ? null : this.review?.analysis ?? this.awayAnalysis; }
+
+  // What the Review bar and the panel head's Review tab show, as the word an agent would report: a run going, then how it
+  // ended until this review is looked at. In the review, the button keeps a failure.
+  // shortcut: the panel's review page starts only when first shown, so the Review bar drops a run's word from before a restart (its main.js); with no bar in the layout, that word stays until the page is shown.
   report() {
-    const a = this.switching ? null : this.review?.analysis, real = a?.state === "running";
-    if (!panes().some(p => p.mod === PANE && p.tab === this.tab)) return;
+    const a = this.runState(), real = a?.state === "running";
     if (this.wasRunning && !real) this.news = this.analyzeError ?? a?.error ? "blocked" : "done";
     this.wasRunning = real;
     if (this.analyzing() || this.onScreen()) this.news = null;
     this.keep("status", this.analyzing() ? "working" : this.news ?? null);
   }
 
-  // This tab's entry in a value shared by tab, none with no value. Every write redraws every mod: only a change, and tabs
-  // without a review pane drop out.
+  // This space's entry in a value shared by space, none with no value. Every write redraws every mod: only a change, and
+  // spaces gone (or the tabs these were keyed by before) drop out.
   keep(name, value) {
-    const key = `${PANE}.${name}`, mine = panes().filter(p => p.mod === PANE), all = shared(key) ?? {};
-    if (!mine.some(p => p.tab === this.tab)) return;
-    const live = Object.entries(all).filter(([tab]) => tab !== this.tab && mine.some(p => p.tab === tab));
-    if (JSON.stringify(all[this.tab] ?? null) === JSON.stringify(value) && live.length === Object.keys(all).length - (this.tab in all ? 1 : 0)) return;
-    setShared(key, Object.fromEntries(value ? [...live, [this.tab, value]] : live));
+    const key = `${PANE}.${name}`, all = shared(key) ?? {}, ids = new Set(spaces().map(s => s.id));
+    const live = Object.entries(all).filter(([id]) => id !== this.space && ids.has(id));
+    if (JSON.stringify(all[this.space] ?? null) === JSON.stringify(value) && live.length === Object.keys(all).length - (this.space in all ? 1 : 0)) return;
+    setShared(key, Object.fromEntries(value ? [...live, [this.space, value]] : live));
   }
 
-  // What this tab's pane shows, for the Review bar to light its count and find the repository: Herdr gives a mod pane no
-  // folder, and a tab of its own has no terminal to borrow one from.
-  publish() { this.keep("shown", { root: this.root, page: this.page, base: this.base }); }
+  // What this space's review shows: for the Review bar to light its count, and to show it again after a restart.
+  publish() { if (this.page) this.keep("shown", { root: this.root, page: this.page, base: this.base }); }
 
   diffCommits() { return diffCommits(this); }
-
-  commitRows() { return commitRows(this); }
 
   models() { return models(this); }
 
@@ -149,7 +274,8 @@ export default class ReviewPane extends View {
     this.popup = name; this.foldAt = -1;
     if (name === "settings") loadSettings(this, cx);
     // On the row shown, so ↑/↓ start from it.
-    if (name === "commits") { this.commitAt = Math.max(0, this.commitRows().findIndex(r => r.page === this.page)); this.commitSearch.focus(); }
+    if (name === "scope") openScope(this, cx);
+    if (name === "base") openBase(this, cx);
     cx.notify();
   }
 
@@ -157,7 +283,8 @@ export default class ReviewPane extends View {
   closePopup(cx, outside = false) {
     if (!this.popup) return;
     this.closedPopup = outside ? this.popup : null; this.popup = null; this.popupClosedAt = Date.now();
-    this.modelInput.set_value(""); this.commitSearch.set_value(""); this.pageAt = -1; this.settingsPage = null;
+    this.modelInput.set_value(""); this.scopeSearch.set_value(""); this.refSearch.set_value(""); this.pageAt = -1; this.settingsPage = null; this.scopePage = null;
+    subOpened(subState(this), null);
     cx.notify();
   }
 
@@ -172,13 +299,18 @@ export default class ReviewPane extends View {
   // Rebuilt only when something it shows changed: render runs on every live change in Herdr. Of the files, only those whose
   // items changed are built again (`parts`); the rest of a group of thousands is joined as it was.
   items() {
-    const split = this.splitShown(), group = this.group(), id = `${this.version}:${this.groupKey}:${split}:${Math.round(this.view / 40)}`;
+    // Wrapped, lines break at the columns the diff's width holds, of the characters' measured widths (diff.js), once known.
+    const char = this.charWidth ?? CHAR, wideChar = this.wideWidth ?? 2 * char, wide = wideChar / char;
+    // At the width it last held (diff.js), so a drag doesn't cut every row in view at each step.
+    const wrap = wrapLines() ? wrapColumns(this.wrapHold.at ?? this.view, char, wideChar) : null;
+    const split = this.splitShown(), group = this.group(), id = `${this.version}:${this.groupKey}:${split}:${Math.round(this.view / 40)}:${wrap ? `${wrap.row}:${wrap.pair}` : ""}:${char}:${wide}`;
     if (id !== this.itemsId) {
       // Kept only once all of it is built: a throw part way would leave the list and its lookups out of step, never rebuilt.
-      const list = group ? buildItems(this.review, group, { collapsed: this.collapsed, full: this.full, split, width: this.view, parts: this.parts }) : [];
+      // A width's change counts each row's lines again (rows.js lineCount) and cuts only those drawn (diff.js).
+      const list = group ? buildItems(this.review, group, { collapsed: this.collapsed, full: this.full, split, width: this.view, wrap, parts: this.parts }) : [];
       // In one pass: the heights v_virtual_list takes (the trailing blank's last), the height from the last header on, and
-      // how wide the code runs, from each open file's widths, measured once per build of its items.
-      const measure = (items) => split ? ["left", "right", "solo"].map(side => contentWidth(items, side)) : [0, 0, contentWidth(items)];
+      // how wide the code runs, from each open file's widths, measured once per build of its items. Wrapped, nothing runs past.
+      const measure = (items) => wrap ? [0, 0, 0] : split ? ["left", "right", "solo"].map(side => contentWidth(items, side, char, wide)) : [0, 0, contentWidth(items, undefined, char, wide)];
       const sizes = [], widths = measure([]);
       let tail = 0;
       for (const item of list) {
@@ -186,11 +318,12 @@ export default class ReviewPane extends View {
         if (item.kind === "file" || item.kind === "group") tail = 0;
         tail += item.size;
         const part = item.kind === "file" && !this.collapsed.has(item.path) && this.parts.get(item.path);
-        if (part) (part.widths ??= measure(part.items)).forEach((w, i) => { widths[i] = Math.max(widths[i], w); });
+        if (part && part.widthsAt !== `${char}:${wide}`) { part.widths = measure(part.items); part.widthsAt = `${char}:${wide}`; }
+        if (part) part.widths.forEach((w, i) => { widths[i] = Math.max(widths[i], w); });
       }
       sizes.push(0);
       // The range last drawn was another list's: until this one draws, scrollToTop mustn't go by it.
-      this.itemsId = id; this.visible = null; this.itemList = list; this.sideWidth = widths; this.sizes = sizes; this.tail = tail;
+      this.itemsId = id; this.visible = null; this.itemList = list; this.sideWidth = widths; this.sizes = sizes; this.tail = tail; this.wrapCols = wrap;
     }
     return this.itemList;
   }
@@ -205,7 +338,8 @@ export default class ReviewPane extends View {
   select(path, cx, { scroll = true } = {}) {
     const owner = this.review.groups.find(g => groupFiles(g).includes(path));
     if (owner && owner.key !== this.groupKey) { this.groupKey = owner.key; this.version++; }
-    this.current = path;
+    this.current = path; this.pickedAt = Date.now();
+    openTo(this, path);
     if (scroll) {
       const index = this.items().findIndex(item => item.key === `f:${path}`);
       if (index >= 0) this.scrollToTop(index, cx);
@@ -270,31 +404,36 @@ export default class ReviewPane extends View {
     return this.paths.get(path);
   }
 
+  // The active space's review; a sentence where there is none to show.
   render(cx) {
-    const t = theme();
-    // Herdr doesn't tell a mod pane its tab, and a tab opened for it may not have the focus yet when it starts: a pane
-    // whose tab holds no review pane takes the one review pane's tab no other has claimed.
-    const mine = panes().filter(p => p.mod === PANE), titles = shared(`${PANE}.titles`) ?? {};
-    if (!mine.some(p => p.tab === this.tab)) {
-      const free = mine.filter(p => !(p.tab in titles));
-      if (free.length === 1) { this.tab = free[0].tab; localStorage.setItem("tab", this.tab); }
-    }
-    // The name pane headers and tabs give this pane (t3's name.js), rather than the folder's; here, not in init, which a reload skips.
-    // A tab of its own, unnamed, reads as this pane too (t3-tabs).
-    this.keep("titles", this.page ? pageLabel(this.page, this.switching ? null : this.review) : "review");
-    // Its icon in pane headers and tabs (t3's name.js), pulls.review's own logo. In a tab of its own it has a card in t3-inbox,
-    // whose Settle closes it: its marks and analysis are the daemon's, so that loses nothing.
-    if (shared(`${PANE}.program`)?.icon !== `mods/${PANE}/icons/logo.svg` || shared(`${PANE}.program`).inbox !== true) setShared(`${PANE}.program`, { icon: `mods/${PANE}/icons/logo.svg`, tint: false, name: "Review", inbox: true });
+    const t = theme(), space = spaces().find(s => s.active);
+    // With no review to show, the toolbar names the page alone and keeps the column's switch, greyed.
+    const note = (body) => v_flex().id("review-pane").size_full().text_color(t.foreground).text_size(12)
+      .child(h_flex().id("review-header").h(40).flex_none().px(8).gap(8).items_center().border_b(1).border_color(t.border)
+        .child(div().id("review-title").flex_1().pl(8).font_medium().child("Review"))
+        .child(navToggle(t, "mods/review", "review-nav-toggle", this.navOpen, () => {}, true)))
+      .child(div().id("review-note").flex_1().min_h(0).child(body));
+    const starting = () => note(loadingState(t, "review-loading", "Loading the review…"));
+    if (!space) return starting();
+    if (space.machine) return note(emptyState(t, "review-empty", `${LU}/file-diff.svg`, "Not on this computer", `Review reads repositories on this machine only, and this space is on ${space.machine}.`));
+    const s = this.spaceReview(space, cx);
+    s.follow(cx);
+    if (!s.scroll) return starting();
+    if (!s.page) return s.noRepo ? note(emptyState(t, "review-empty", `${LU}/file-diff.svg`, "Not a git repository", "This space's folder isn't in a git repository.")) : starting();
+    return s.draw(cx);
+  }
+
+  // What others ask of this space's review, and what it tells them.
+  follow(cx) {
     this.report();
-    // A later open in this tab: another page, maybe another worktree.
+    // An open from the Review bar or the review's own commit switch: another page, maybe another worktree.
     const request = shared(PANE);
-    if (request && request.tab === this.tab && request.n > this.handled) {
+    if (request && request.space === this.space && request.n > this.handled) {
       this.handled = request.n;
-      if (request.root !== this.root) { this.root = request.root; this.watching = null; this.seen.clear(); this.collapsed.clear(); this.page = null; this.forget(); }
-      // With a base, the header's switch picking another page of the same diff: its commits stay.
+      if (request.root !== this.root) { this.root = request.root; this.seen.clear(); this.collapsed.clear(); this.flipped.clear(); this.page = null; this.forget(); }
+      // With the same base, ‹ › stepping to another page of the same diff: its commits stay.
+      if (!request.base || request.base !== this.base) this.baseCommits = null;
       this.base = request.base ?? request.page;
-      if (!request.base) this.baseCommits = null;
-      this.remember();
       // Only the bar's counts ask for an analysis, so anything else takes back an ask not yet read.
       this.analyzeFor = request.analyze === true ? request.page : null;
       // The page already shown has no read coming to act on the ask.
@@ -303,6 +442,10 @@ export default class ReviewPane extends View {
       if (again) this.load(cx);
     }
     this.publish();
+  }
+
+  draw(cx) {
+    const t = theme();
     if (JSON.stringify(colors(t)) !== this.colorsKey) {
       this.colorsKey = JSON.stringify(colors(t));
       if (this.review) {
@@ -310,7 +453,8 @@ export default class ReviewPane extends View {
         // A whole file shown has them too: it's read again, still shown.
         const whole = [...this.full.keys()];
         this.full.clear();
-        for (const path of whole) { const file = this.fileAt(path); if (file) this.toggleFull(file, cx); }
+        // Just after this draw: asking for one, as each does, isn't allowed while drawing.
+        if (whole.length) cx.timer.after(0, (cx) => { for (const path of whole) { const file = this.fileAt(path); if (file) this.toggleFull(file, cx); } });
         this.version++;
         this.load(cx);
       }
@@ -319,63 +463,76 @@ export default class ReviewPane extends View {
     // or a file cut short nears its end: its next page. Not after a failed read (Retry and the slow timer read again) nor
     // while a mark lands (its own read follows): a read then would fail or be dropped, and ask again at once.
     if ((this.rowsWanted().length || this.pageWanted()) && !this.loading && !this.error && !this.marking) this.loadRows(cx);
-    const wide = this.width >= WIDE, sidebar = this.sidebarShown(), group = this.group();
-    // A group newly shown, however it came to be, opens its subgroups; its tab's caret folds them.
-    if (this.groupKey !== this.expandedFor) { this.expandedFor = this.groupKey; this.expandedTab = this.groupKey; }
-    // As the app below `lg`, where the header eats a big share of the screen: it slides away after a long scroll down and
-    // comes back on any scroll up.
-    const hidden = this.headerHidden && !wide;
-    // As the app at `lg`: beside the diffs, an aside with the header and files of the group in view, a fifth of the row;
-    // a chapter's header (a group with subgroups) across the row above. Narrower, the header leads the diffs. Either way it
-    // shows only at the list's top, as the app's scrolls away with the diffs.
-    const row = this.width - (sidebar ? 256 : 0);
-    const column = () => v_flex().size_full().min_w(0).min_h(0)
-      .when(!sidebar && !hidden, el => el.child(groupTabs(this, t)))
-      .when(Boolean(group) && (!wide || group.children.length > 0) && this.atTop(), el => el.child(groupHeader(this, t, group)))
-      .child(!wide ? div().flex_1().min_h(0).child(diffView(this, t))
-        : h_resizable("review-aside-width").flex_1().min_h(0)
-          .child(resizable_panel().size(Math.max(ASIDE_MIN, Math.round(row / 5))).size_range(ASIDE_MIN, Math.max(ASIDE_MIN, Math.round(row * ASIDE_MAX_RATIO))).child(aside(this, t)))
-          .child(resizable_panel().child(diffView(this, t))));
+    const group = this.group();
+    // The column lists the group's files; with none to list (no changes), it's away and its switch greyed.
+    this.navShown = this.navOpen && Boolean(this.review) && !this.navEmpty();
+    // The keys move in the file tree only while it's drawn.
+    this.treeShown = this.navShown;
+    // There's always a file in front while the group has one: its first, until a click, a key or the list's top says another.
+    // Its folders open, so the tree shows it.
+    if (group && !this.switching && !groupFiles(group).includes(this.current)) { this.current = groupFiles(group)[0] ?? null; if (this.current) openTo(this, this.current); }
     // Its run over, nothing else closes the panel: the next run would bring it back, or the next press only close it unseen.
     const { running, error } = analysisStatus(this);
     if (this.popup === "status" && (!this.review || this.switching || !(running || error))) this.popup = null;
-    return v_flex().id("review-pane").relative().size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(12)
+    // Set again by the submenu drawn, if one is.
+    this.subRect = null;
+    // The settings and fold menus hang 4 under their 24 buttons, right-aligned with them: past the 8 inset and the tree's
+    // switch (header.js), 24 and 4 apart.
+    const right = 8 + 28;
+    return v_flex().id("review-pane").relative().size_full().min_h(0).text_color(t.foreground).text_size(12)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .on_mouse_down("left", () => this.handle.focus())
+      // A tree row's right-click noted what it's for: its menu opens where it was pressed.
+      .on_mouse_down("right", (e, cx) => {
+        if (!this.menuFor) return;
+        this.menu = { ...this.menuFor, x: (e.local_position?.x ?? 0) / zoom(), y: (e.local_position?.y ?? 0) / zoom(), at: -1 };
+        this.menuFor = null;
+        this.menuHandle.focus();
+        cx.notify();
+      })
+      // Where the pane is in the window: a submenu goes by its rows' bounds, which come in the window's.
+      .on_mouse_move((e) => { this.paneAt = { x: e.bounds.x, y: e.bounds.y }; })
       .on_size_change((size, cx) => {
         const width = size.width / zoom(), height = size.height / zoom();
         if (Math.abs(width - this.width) >= 1 || Math.abs(height - this.height) >= 1) { this.width = width; this.height = height; cx.notify(); }
       })
-      .when(!hidden, el => el.child(header(this, t, this.head())))
-      .when(Boolean(this.error), el => el.child(h_flex().flex_none().px(12).py(6).gap(8).bg(t.ansi1 + "18").text_color(t.ansi1).text_size(11)
-        .child(div().flex_1().min_w(0).child(this.error))
-        .child(button(t, "retry", "Retry", (cx) => this.load(cx)))))
+      .child(header(this, t, this.head()))
+      .when(Boolean(this.error), el => el.child(errorBar(t, "review-error", this.error, (cx) => this.load(cx), this)))
+      // The groups, as pulls.review's tabs, across the page: the one picked is the diff and the tree.
+      .children(this.review && !this.switching ? [groupTabs(this, t, (key, cx) => showGroup(this, key, cx))].filter(Boolean) : [])
       .child((!this.review
         // As the app's FeedbackLoading.
-        ? div().flex_1().py(48).when(!this.error, el => el.child(h_flex().gap(8).items_center().justify_center().text_color(t.dim).role("status")
-          .child(svg("mods/workspace-chrome/spinner.svg").size(14).flex_none().text_color(t.working).spin(900)).child("Loading the review…")))
-        // The divider drags; Herdr keeps the width under the group's id (renamed when the default changes, to take it).
-        // As the app's group sidebar: w-64, at least 192, at most 40% of the page.
-        : sidebar ? h_resizable("review-sidebar-width").flex_1().min_h(0)
-          .child(resizable_panel().size(256).size_range(192, Math.max(192, Math.round(this.width * 0.4))).child(groupSidebar(this, t)))
-          .child(resizable_panel().child(column()))
-        : div().flex_1().min_h(0).child(column())).when(Boolean(this.switching), el => el.opacity(DISABLED)))
+        ? div().flex_1().min_h(0).when(!this.error, el => el.child(loadingState(t, "review-loading", "Loading the review…")))
+        // The diff on the left, the files in the panel's navigation column on the right, at the window's edge (ADR 0013).
+        : div().flex_1().min_h(0).child(withNav(t, "review", this.width, { open: this.navShown, head: navHead(this, t), list: fileTree(this, t).size_full(),
+          // The group shown's summary over its diff, as the app's group header: its title 13 medium, its words 12.
+          content: v_flex().size_full().min_w(0)
+            // A rule-based group's summary is the daemon's boilerplate for its folder rule.
+            .when(Boolean(group?.summary) && this.review.source !== "rule-based", el => el.child(v_flex().id("group-summary").flex_none().max_h(160).overflow_hidden().px(16).py(10).gap(4).border_b(1).border_color(t.border)
+              .child(div().text_size(13).font_medium().child(group.label))
+              .child(TextView.markdown(`summary-${group.key}`, group.summary).selectable(true).scrollable(false).text_size(12).text_color(t.muted))))
+            .child(div().flex_1().min_h(0).child(diffView(this, t))) }))).when(Boolean(this.switching), el => el.opacity(DISABLED)))
       // Built only while open: render runs on every live change, and a catalog runs to hundreds of rows.
       // Each 4 under its button (T3's sideOffset) in the 40 header: 38 under the 28s, 36 under the 24 switch.
-      .when(this.popup === "settings", el => el.child(div().absolute().top(38).right(16).child(settingsPanel(this, t))))
+      .when(this.popup === "settings", el => el.child(div().absolute().top(36).right(right).child(settingsPanel(this, t))))
+      .when(this.popup === "settings" && Boolean(this.settingsPage), el => el.child(settingsSub(this, t)))
       // Under its button, the one left of the gear.
-      .when(this.popup === "fold" && Boolean(this.review) && !this.switching && !hidden, el => el.child(div().absolute().top(38).right(48).child(foldMenu(this, t))))
-      // Under the header's left end, where the switch starts.
-      .when(this.popup === "commits" && !hidden, el => el.child(div().absolute().top(36).left(16).child(commitMenu(this, t))))
+      .when(this.popup === "fold" && Boolean(this.review) && !this.switching, el => el.child(div().absolute().top(36).right(right + 28).child(foldMenu(this, t))))
+      // Under the header's left end, where the scope button starts.
+      .when(this.popup === "scope", el => el.child(div().absolute().top(36).left(8).child(scopeMenu(this, t))))
+      .when(this.popup === "scope" && Boolean(this.scopePage), el => el.child(scopeSub(this, t)))
+      // Under its button in the header, where its press found it.
+      .when(this.popup === "base", el => el.child(baseMenu(this, t)))
       // At the pane's end rather than under its button: 320 wide, it would run off a narrow pane from there.
-      .when(this.popup === "status", el => el.child(div().absolute().top(38).right(16).child(statusPanel(this, t))));
+      .when(this.popup === "status", el => el.child(div().absolute().top(36).right(8).child(statusPanel(this, t))))
+      .when(Boolean(this.menu), el => el.child(fileMenuView(this, t, "mods/review", menuItems(this, this.menu), this.menuHandle, { width: this.width, height: this.height })));
   }
 
   // Split as chosen, where the diff is wide enough for two sides; narrower it's unified, the choice kept.
   splitShown() { return pref("split") === true && this.view >= SPLIT_MIN; }
 
-  // The sidebar as chosen, from WIDE, as the app's from `lg`; narrower the groups are tabs, the choice kept.
-  sidebarShown() { return pref("groupNav") === "sidebar" && this.width >= WIDE; }
+  // No files for the column to list: no changes in this diff.
+  navEmpty() { return !this.review?.files.length; }
 
   toggleSplit(cx) {
     setPref("split", pref("split") !== true);
@@ -386,24 +543,21 @@ export default class ReviewPane extends View {
 
   head() { return head(this); }
 
-  // The group or subgroup at the list's top, as the app's aside sticks for the group scrolled to; before the list draws, its first.
-  asideGroup() {
-    const g = this.group(), items = this.itemList ?? [];
-    if (!g) return null;
-    for (let i = Math.min(this.visible?.start ?? 0, items.length - 1); i >= 0; i--) if (items[i].kind === "group") return items[i].group;
-    return g.files.length || !g.children.length ? g : g.children[0];
-  }
-
   // The files whose rows the list last drew, as the app marks the files in view.
   visibleFiles() {
     const { start = 0, end = 0 } = this.visible ?? {};
     return new Set((this.itemList ?? []).slice(start, end).filter(item => item.kind !== "group").map(item => item.path));
   }
 
-  spied() { return this.review ? JSON.stringify([this.asideGroup()?.key, [...this.visibleFiles()], [...this.visibleGroups()], this.atTop(), this.stickyFile()?.path, this.pageWanted()]) : ""; }
+  spied() { return this.review ? JSON.stringify([[...this.visibleFiles()], this.stickyFile()?.path, this.pageWanted(), this.current]) : ""; }
 
-  // Whether the list is at its first item: the group's header shows only then.
-  atTop() { return (this.visible?.start ?? 0) === 0; }
+  // The file whose header or rows open the view; before the list draws, none.
+  topFile() {
+    if (!this.visible || this.switching) return null;
+    const items = this.itemList ?? [];
+    for (let i = this.visible.start; i < items.length; i++) if (items[i].path) return items[i].path;
+    return null;
+  }
 
   // The file whose rows open the view once its header has scrolled past the top: that header sticks there, as the app's.
   stickyFile() {
@@ -412,15 +566,4 @@ export default class ReviewPane extends View {
   }
 
   hbars(t) { return hbars(this, t); }
-
-  // The subgroups whose rows the list last drew, as the app marks the groups in view.
-  visibleGroups() {
-    const keys = new Set(), items = this.itemList ?? [], { start = 0, end = 0 } = this.visible ?? {};
-    let current = null;
-    for (let i = 0; i < Math.min(end, items.length); i++) {
-      if (items[i].kind === "group") current = items[i].group.key;
-      if (i >= start && current) keys.add(current);
-    }
-    return keys;
-  }
 }

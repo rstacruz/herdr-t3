@@ -38,7 +38,7 @@ _Avoid_: Focus（旧名）、通知
 _Avoid_: 列表模式
 
 **卡片**：
-Inbox 上方代表一个 agent 或一个 Review 的条目。
+Inbox 上方代表一个 agent 的条目（或一个声明了 `inbox: true` 的 mod pane）。
 
 **收纳区**：
 Inbox 底部可折叠的分组：Working、Snoozed、Settled。
@@ -70,8 +70,12 @@ _Avoid_: 稍后提醒、mute
 ## 位置和入口
 
 **Home**：
-收起当前查看的 agent 后的落脚点，一个不属于任何项目的隐形 space。
+收起当前查看的 agent 后的落脚点，一个不属于任何项目的隐形 space，里面只放一样东西（一个 mod 或一个 shell），不放 agent。
 _Avoid_: dashboard、首页
+
+**Settings**（布局设置）：
+布局自己的设置页，和 Herdr 的 Settings 分开；只收因人而异的偏好（见 ADR 0009）。
+_Avoid_: preferences、config、T3 settings
 
 **Go to**：
 `cmd-p` 打开的跳转面板，每个窗格一行。
@@ -82,5 +86,17 @@ _Avoid_: picker（mod 名）、Search（Inbox 里的入口名）
 _Avoid_: task、script
 
 **Review**：
-一个 space 的待评审内容，以及显示它的评审窗格；Review 栏是它在标签栏里的入口。
-_Avoid_: diff、changes
+一个 space 的待评审内容，以及显示它的 space 面板 Review 页；Review 栏是它在标签栏里的入口。
+_Avoid_: diff、changes、评审窗格
+
+**space 面板**：
+窗口右侧唯一的面板，页面有 Files 和 Review，同时只显示一页，内容跟随当前 space；开没开、在哪一页、放没放大，按 space 各记一份。两页共用一套框架：顶部工具栏，其下内容在左、导航列在右。
+_Avoid_: 侧边面板、panel 栏
+
+**导航列**：
+space 面板一页里内容右边的那一列：列头加文件树。每页各记自己的宽度和开关。
+_Avoid_: aside、侧栏、文件栏
+
+**Files**：
+space 面板里只读浏览 space 文件夹的那一页。
+_Avoid_: 文件浏览器、file explorer
