@@ -1,15 +1,16 @@
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { focused, run, setShared, settings, openOverlay, props } from "herdr";
+import { focused, run, settings } from "herdr";
 import { focusPane } from "./zoom.js";
 import { dragGone, POINTER_WATCH, pointerMoved } from "./tip.js";
 import { detailsAt, detailsFor } from "./details.js";
 import { MOTION } from "./motion.js";
 import { SLIM, CARD_GAP, LIST_TOP } from "./list-view.js";
-import { byRecent } from "./row-model.js";
+import { byCard } from "./row-model.js";
+import { setPinned, unpin } from "./pins.js";
 
 export function inboxDrag(view, t, model, actions) {
-  const { list, pins, pinned, put, out, busy, hidden, settledAt, working, since, viewing, napUntil, wake, inView, busyRows, napRows } = model;
+  const { list, pins, pinned, put, out, busy, hidden, settledAt, working, since, state, viewing, napUntil, wake, inView, busyRows, napRows } = model;
   const { settle, unsettle, repin, go } = actions;
   const zoom = Number(settings()?.zoom) || 1;
   // Dragging, as T3's sidebar does it (Sidebar.drag.ts, Sidebar.pointer.ts). Press a row and move 6px to lift it;
@@ -45,8 +46,8 @@ export function inboxDrag(view, t, model, actions) {
     // Busy work can't be settled (new work brings it straight back); out of Pinned it joins the Working shelf.
     if (busy(lifted)) return to.section === "settled" ? null : { section: "active", gap: null };
     if (to.section === "settled") return { section: "settled", gap: !view.open ? null : others(put)[0]?.address ?? "head-settled" };
-    const recent = (a) => ({ address: a.address, since: since(a) });
-    const rest = others(out), at = from === "settled" ? 0 : rest.filter((x) => byRecent(recent(x), recent(lifted)) < 0).length;
+    const recent = (a) => ({ address: a.address, since: since(a), blocked: state(a) === "blocked" });
+    const rest = others(out), at = from === "settled" ? 0 : rest.filter((x) => byCard(recent(x), recent(lifted)) < 0).length;
     return { section: "active", gap: !rest.length ? "head-active" : rest[at]?.address ?? "end-active" };
   })();
   const target = dragging ? d.target?.section ?? null : null;
@@ -114,14 +115,6 @@ export function inboxDrag(view, t, model, actions) {
       if (a.mod || sectionOf(a) === "working" || view.pending.settled[a.address] !== undefined || view.pending.snoozed[a.address] !== undefined || view.hot === `snooze-${a.address}`) return;
       view.drag = { from: a.address, at: e.position, grab: (e.local_position?.y ?? 0) / zoom, height: (e.bounds?.height ?? 0) / zoom, moved: false, target: null };
     })
-    // Its menu: Mark unread when it's idle, Settle unless it needs the person or is settled, then its space's items
-    // (Rename, Labels…); docked alone, the shipped space menu.
-    .on_mouse_down("right", () => {
-      if (!a.space) return;
-      const unread = !a.mod && model.state(a) === "idle", settle = !a.mod && !model.settledAt(a) && model.state(a) !== "blocked";
-      if (props()?.home) openOverlay({ mod: "t3-menu", kind: "popup", width: 220, height: 320, props: { tab: "agent", target: { address: a.address, space: a.space, unread, settle } } });
-      else openOverlay({ mod: "menu", kind: "popup", width: 220, height: 260, props: { tab: "space", target: { id: a.space } } });
-    })
     .on_mouse_move((e, cx) => {
       // Lifted, the root tracks the pointer: a second report of one place would read as having stopped.
       if (!view.drag?.moved && !view.sweep?.moved) detailsAt(view, a.address, e);
@@ -144,11 +137,11 @@ export function inboxDrag(view, t, model, actions) {
     if (!plan) return false;
     const a = lifted;
     if (plan.section === "settled") return settle([a], cx);
-    if (plan.section === "pinned") setShared("agents.pins", plan.order);
+    if (plan.section === "pinned") setPinned(plan.order);
     // Out of Snoozed it's a Wake, which keeps the pin.
     else if (pins.includes(a.address) && from !== "snoozed") {
       const before = [...pins];
-      setShared("agents.pins", pins.filter((p) => p !== a.address));
+      unpin([a.address]);
       view.remember("Unpinned", 1, () => repin(before, [a.address]), cx);
     }
     if (settledAt(a)) unsettle(a, cx);

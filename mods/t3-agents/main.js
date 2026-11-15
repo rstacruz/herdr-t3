@@ -11,6 +11,9 @@ import { menuJump } from "./list.js";
 import { MOTION, planMotion, flying, leavingRows } from "./motion.js";
 import { agentEntries, agentStatus, STACK, RANK, SECTION } from "./rows.js";
 import { sidebarParts } from "./sidebar.js";
+import { KEY, migrateLocal } from "./store.js";
+import { pinList, setPinned } from "./pins.js";
+import { button, radiusOf } from "./button.js";
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
@@ -41,16 +44,17 @@ export default class Agents extends View {
     });
     this.folded = JSON.parse(localStorage.getItem("folded") ?? "{}");
     // Each agent's last state and when it changed (ms), kept across restarts.
-    this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
+    migrateLocal([["changed", "changes"]]);
+    this.changed = JSON.parse(localStorage.getItem("changes") ?? "{}");
     cx.timer.every(1000, () => this.compute());
     cx.timer.every(30000, (cx) => cx.notify()); // The rows' times move with nothing else changing.
     // Older installs kept pins in this list's storage; move them over once, before the inbox writes any.
-    if (shared("agents.pins") == null && localStorage.getItem("pins")) setShared("agents.pins", JSON.parse(localStorage.getItem("pins")));
+    if (shared(KEY.pins) == null && localStorage.getItem("pins")) setPinned(JSON.parse(localStorage.getItem("pins")));
   }
 
-  // Shared with the inbox (t3-inbox): one set of pins.
+  // Shared with the inbox (t3-inbox) and the tab bar: one set of pins (pins.js).
   get pins() {
-    return shared("agents.pins") ?? [];
+    return pinList();
   }
 
   isFolded(id, initial = true) {
@@ -79,7 +83,7 @@ export default class Agents extends View {
     // Gone and old: the list alone is empty right after a start.
     const listed = new Set(list.map((a) => a.address));
     for (const [k, c] of Object.entries(this.changed)) if (!listed.has(k) && now - c.at > 30 * 86400000) delete this.changed[k];
-    localStorage.setItem("changed", JSON.stringify(this.changed));
+    localStorage.setItem("changes", JSON.stringify(this.changed));
   }
 
   // Drops pins and fold choices of agents that ended. Only for machines the list has heard from:
@@ -89,7 +93,7 @@ export default class Agents extends View {
     const heard = new Set(all.map((k) => machine(k.address)));
     const live = new Set(all.filter((k) => k.state === "live").map((k) => k.address));
     const kept = this.pins.filter((p) => !heard.has(machine(p)) || live.has(p));
-    if (kept.length !== this.pins.length) setShared("agents.pins", kept);
+    if (kept.length !== this.pins.length) setPinned(kept);
     // Group headers (sp-…, sec-…, pinned) fold under the same store; only agents' entries end.
     const ended = Object.keys(this.folded).filter((k) => !/^(sp-|sec-|pinned$)/.test(k) && heard.has(machine(k)) && !live.has(k));
     for (const k of ended) delete this.folded[k];
@@ -216,12 +220,12 @@ export default class Agents extends View {
     const view = order.includes(ancestor) ? ancestor : null;
     if (sidebarParts(layout()).stack?.active !== "inbox") {
       const drawn = { order, view };
-      if (JSON.stringify(drawn) !== JSON.stringify(shared("t3-agents.rows") ?? null)) setShared("t3-agents.rows", drawn);
+      if (JSON.stringify(drawn) !== JSON.stringify(shared(KEY.agentsRows) ?? null)) setShared(KEY.agentsRows, drawn);
       const addresses = list.map(a => a.address), key = JSON.stringify(addresses);
-      if (key !== this.agentOrder || shared("t3-agent-order") !== "lists") {
+      if (key !== this.agentOrder || shared(KEY.agentOrder) !== "lists") {
         this.agentOrder = key;
         setAgentOrder(addresses);
-        if (shared("t3-agent-order") !== "lists") setShared("t3-agent-order", "lists");
+        if (shared(KEY.agentOrder) !== "lists") setShared(KEY.agentOrder, "lists");
       }
     } else this.agentOrder = null;
     return { sort, list, all, shown, ps, now, viewing, byPriority, own, shownStatus, pinned, groups };
@@ -265,12 +269,7 @@ export default class Agents extends View {
             .justify_between()
             .child(div().text_size(12).font_medium().text_color(t.muted).child("Agents"))
             .child(
-              tip(this, t, "ag-sort", `Sort agents: ${sort.label}`, stop(this, t, "ag-sort", div()
-                .id("ag-sort")
-                .size(28).flex_none().flex().items_center().justify_center().rounded(8)
-                .role("button").accessibility_label("Sort agents")
-                .text_color(this.hot === "ag-sort" ? t.foreground : t.dim)
-                .hover((s) => s.bg(t.hover))
+              tip(this, t, "ag-sort", `Sort agents: ${sort.label}`, stop(this, t, "ag-sort", button(t, "ag-sort", { icon: `mods/t3-agents/icons/${sort.icon}.svg`, label: "Sort agents", size: "sm", hot: this.hot === "ag-sort" })
                 .on_hover(glow(this, "ag-sort"))
                 .on_mouse_down("left", (e) => { pressed(this); this.sortFrom = e.bounds; })
                 .on_click((_e, cx) => {
@@ -281,8 +280,7 @@ export default class Agents extends View {
                   this.sortFrom = null;
                   openOverlay({ mod: "t3-agents", kind: "popup", width: SORT_WIDTH, height: 140, ...(b ? { at: { x: b.x + b.width - SORT_WIDTH * z, y: b.y + b.height + 4 * z } } : {}), props: { sortMenu: true } });
                   cx.notify();
-                })
-                .child(svg(`mods/t3-agents/icons/${sort.icon}.svg`).size(16)), 8)),
+                }), radiusOf("sm"))),
             ),
       )
       .when(list.length === 0, (el) =>

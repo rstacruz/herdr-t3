@@ -46,7 +46,7 @@ const env = {
   focused: () => ({ tab: "b", cwd: "/repo" }), panes: () => [], spaces: () => [{ active: true, folder: "/space" }],
   nextCommand: () => commands.length ? Promise.resolve(commands.shift()) : new Promise(() => {}),
 };
-const source = ["tip.js", "focus.js", "list.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
+const source = ["button.js", "store.js", "tip.js", "focus.js", "list.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export /gm, "");
 const cx = { notify() {}, stop_propagation() {}, spawn: (fn) => jobs.push(fn), focus_handle: () => ({ focus() {} }), timer: { every: () => ({ cancel() {} }), after: (_ms, f) => (f(cx), { cancel() {} }) } };
 const load = (props = {}) => {
@@ -61,13 +61,13 @@ const load = (props = {}) => {
 for (const name of JSON.parse(/const ICONS = (\[[^\]]+\])/.exec(source)[1])) assert.ok(fs.existsSync(path.join(__dirname, "icons", `action-${name}.svg`)), `icon on disk: ${name}`);
 
 // Home has no project to run them in; the same bar elsewhere shows them.
-state["t3-home.space"] = "home";
+state["t3-tabs.home"] = "home";
 env.spaces = () => [{ id: "home", active: true }];
 assert.equal(find(load({ block: "actions" }).render(), "actions-fit"), null);
 env.spaces = () => [{ id: "home" }, { id: "s", active: true, folder: "/space" }];
 assert.ok(find(load({ block: "actions" }).render(), "actions-fit"));
 env.spaces = () => [{ active: true, folder: "/space" }];
-delete state["t3-home.space"];
+delete state["t3-tabs.home"];
 
 // None yet: "Add action", outlined, brightening with its icon on hover; it opens the editor.
 const bar = load({ block: "actions" });
@@ -79,7 +79,7 @@ fire(find(bar.render(), "action-add"), "on_click", {}, cx);
 assert.deepEqual(plain(overlays.at(-1)), { mod: "t3-actions", kind: "dialog", frame: "none", width: 512, props: { actions: "edit", id: null } }, "as T3's dialog, as tall as its fields");
 
 // Some: "▶ Dev | ▾" in one outline, a rule between.
-state["t3-actions"] = { list: [{ id: "a", name: "Dev", command: "bun dev" }, { id: "b", name: "Test", command: "bun test", place: "right", cwd: "~/x" }] };
+state["t3-actions.actions"] = { list: [{ id: "a", name: "Dev", command: "bun dev" }, { id: "b", name: "Test", command: "bun test", place: "right", cwd: "~/x" }] };
 const control = find(bar.render(), "actions");
 assert.ok(control.style.border);
 assert.deepEqual(control.items.map(n => typeof n.key === "string" ? n.key : n.kind), ["tip-action-run", "div", "tip-action-more"]);
@@ -87,13 +87,16 @@ assert.equal(find(control, "tip-action-more").style.anchor, "top_center", "the t
 assert.deepEqual(strings(find(control, "action-run")), ["Dev"]);
 fire(find(control, "action-run"), "on_click");
 assert.deepEqual(calls.at(-1), ["terminal.open", { argv: ["sh", "-c", "bun dev"], name: "Dev", place: "tab", folder: "/repo" }]);
-// The menu hangs from the bar under the press; with none (assistive tech), at the pointer.
+// The menu hangs 4 under the control, right edges together (its outline 1 past ▾), as T3's (align end) and the layout's
+// other menus from a right-side button; with no press (assistive tech), at the pointer.
 fire(find(bar.render(), "action-more"), "on_click", {}, cx);
 assert.equal(overlays.at(-1).at, undefined);
-fire(find(bar.render(), "action-more"), "on_mouse_down:left", { position: { x: 1000, y: 20 } }, cx);
+fire(find(bar.render(), "action-more"), "on_mouse_down:left", { position: { x: 1000, y: 20 }, bounds: { x: 990 * zoom, y: 9 * zoom, width: 23 * zoom, height: 22 * zoom } }, cx);
 fire(find(bar.render(), "action-more"), "on_click", {}, cx);
-assert.deepEqual(plain(overlays.at(-1).at), { x: 992, y: 36 * zoom });
+const hung = plain(overlays.at(-1).at);
+assert.deepEqual([hung.x / zoom, hung.y / zoom].map(v => Math.round(v * 1000) / 1000), [990 + 23 + 1 - 220, 9 + 22 + 1 + 4], "right edges together, 4 under the outline");
 assert.equal(overlays.at(-1).mod, "t3-actions");
+assert.equal(overlays.at(-1).width, 220, "as wide as the layout's other menus (t3-menu's, T3's)");
 // The button toggles: the press closed the open menu on its way in, so its click doesn't open another.
 {
   const open = load({ actions: "menu" }), count = overlays.length;
@@ -118,8 +121,8 @@ assert.deepEqual(plain(overlays.at(-1).props), { actions: "edit", id: "a" });
 
 // Past the rows that show, ↑/↓ keep the highlight in view; Add action stays outside the list.
 {
-  const saved = state["t3-actions"];
-  state["t3-actions"] = { ...saved, list: Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, name: `N${i}`, command: "x", icon: "play" })) };
+  const saved = state["t3-actions.actions"];
+  state["t3-actions.actions"] = { ...saved, list: Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, name: `N${i}`, command: "x", icon: "play" })) };
   const long = load({ actions: "menu" }), press = (k) => fire(find(long.render(), "actions-menu"), "on_key_down", { key: k }, cx);
   assert.equal(find(long.render(), "actions-list").style.h, 420 - 45, "the list sets its own height: a popup's is only a maximum, and a flexed list would have none");
   assert.ok(!find(long.render(), "action-n20"), "only the rows in view are drawn");
@@ -127,23 +130,30 @@ assert.deepEqual(plain(overlays.at(-1).props), { actions: "edit", id: "a" });
   assert.ok(find(long.render(), "action-n25"), "the highlight's row is");
   for (let i = 0; i < 5; i++) press("down");
   assert.ok(find(long.render(), "action-new") && find(long.render(), "action-n29"), "Add action lit, the list stays where it was");
-  state["t3-actions"] = saved;
+  state["t3-actions.actions"] = saved;
 }
 
 // The editor saves an edit in place, and a new one at the end.
 fields.length = 0;
 const edit = load({ actions: "edit", id: "a" });
 assert.equal(edit.render().style.opacity, undefined, "its contents are there from the first frame");
+assert.equal(find(edit.render(), "action-save").hoverStyle.opacity, 0.9);
+assert.equal(find(edit.render(), "action-delete").style.bg, theme.raised);
+assert.equal(find(edit.render(), "action-close").hoverStyle.bg, theme.foreground + "12", "a dialog's ghost uses a card tint");
 fields[1].text = "bun run dev";
 fire(find(edit.render(), "action-save"), "on_click");
-assert.equal(state["t3-actions"].list[0].command, "bun run dev");
+assert.equal(state["t3-actions.actions"].list[0].command, "bun run dev");
 fields.length = 0;
 const add = load({ actions: "edit", id: null });
-fire(find(add.render(), "action-save"), "on_click");
-assert.equal(state["t3-actions"].list.length, 2, "no name or command, nothing saved");
+const disabledSave = find(add.render(), "action-save");
+assert.equal(disabledSave.handlers.on_click, undefined, "disabled Save has no click");
+assert.equal(disabledSave.style.opacity, 0.64);
+assert.equal(disabledSave.style.bg, theme.solid, "disabled primary keeps its fill");
+assert.deepEqual(disabledSave.hoverStyle, {}, "disabled Save has no hover");
+assert.equal(state["t3-actions.actions"].list.length, 2, "no name or command, nothing saved");
 fields[0].text = "Lint"; fields[1].text = "bun lint";
 fire(find(add.render(), "action-save"), "on_click");
-assert.deepEqual(plain(state["t3-actions"].list.map(a => a.name)), ["Dev", "Test", "Lint"]);
+assert.deepEqual(plain(state["t3-actions.actions"].list.map(a => a.name)), ["Dev", "Test", "Lint"]);
 
 // It sizes its block to the control, in logical pixels, once per change; without a block it leaves the layout alone.
 calls.length = 0;
@@ -157,20 +167,20 @@ assert.equal(calls.length, 1);
 assert.ok([bar.render(), find(bar.render(), "actions"), find(bar.render(), "action-run")].every(n => !n.style.bg), "no fill at rest: the bar's own background shows");
 
 // In a narrow bar the icon stands alone; the hover label and the accessibility label keep the name.
-state["bar.compact"] = true;
+state["t3-tabs.compact"] = true;
 assert.deepEqual(strings(find(bar.render(), "action-run")), []);
 assert.equal(find(bar.render(), "action-run").style.accessibility_label, "Run Test");
 assert.ok(find(bar.render(), "action-more"), "the menu stays");
-const added = state["t3-actions"];
-state["t3-actions"] = { list: [] };
+const added = state["t3-actions.actions"];
+state["t3-actions.actions"] = { list: [] };
 assert.deepEqual(strings(find(bar.render(), "action-add")), []);
 assert.equal(find(bar.render(), "action-add").style.accessibility_label, "Add action");
-state["t3-actions"] = added;
-delete state["bar.compact"];
+state["t3-actions.actions"] = added;
+delete state["t3-tabs.compact"];
 
 (async () => {
   // What opens over its button drops its hover: nothing reports the leaving until the pointer moves.
-  state["t3-actions"] = { list: [{ id: "a1", name: "Dev", command: "x" }, { id: "a2", name: "Test", command: "y" }] };
+  state["t3-actions.actions"] = { list: [{ id: "a1", name: "Dev", command: "x" }, { id: "a2", name: "Test", command: "y" }] };
   const view = load();
   fire(find(view.render(), "action-more"), "on_hover", true, cx);
   fire(find(view.render(), "action-more"), "on_click", {}, cx);
@@ -206,14 +216,14 @@ delete state["bar.compact"];
   assert.equal(jobs.length, heard, "an overlay's copy doesn't listen");
   fire(find(edit.render(), "action-delete"), "on_click", {}, cx);
   const { mod, props } = overlays.pop();
-  assert.deepEqual([mod, props.actions, props.title], ["t3-actions", "confirm", "Delete Dev?"]);
-  assert.equal(state["t3-actions"].list.length, 2, "the click only asks");
+  assert.deepEqual([mod, props.actions, props.title, props.yes], ["t3-actions", "confirm", "Delete Dev?", "Delete"]);
+  assert.equal(state["t3-actions.actions"].list.length, 2, "the click only asks");
   const dot = props.command.name.indexOf(".");
   assert.equal(props.command.name.slice(0, dot), "t3-actions");
   commands.push(props.command.name.slice(dot + 1));
   jobs[0]();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(plain(state["t3-actions"].list.map((a) => a.id)), ["a2"]);
+  assert.deepEqual(plain(state["t3-actions.actions"].list.map((a) => a.id)), ["a2"]);
 
   // T3's alert dialog: its buttons run the command or only close, Enter runs it, Esc only closes.
   {
@@ -221,11 +231,13 @@ delete state["bar.compact"];
     let ran = calls.length;
     fire(find(ask().render(), "confirm-no"), "on_click", {}, cx);
     assert.equal(calls.length, ran, "Cancel runs nothing");
-    for (const [ansi1, background, ink, why] of [["#cd3131", "#000000", "#ffffff", "T3's white on T3's red"], ["#f38ba8", "#1e1e2e", "#1e1e2e", "a pale red takes the background"], ["#aa0000", "#000000", "#ffffff", "a dark red on black takes white"]]) {
-      Object.assign(theme, { ansi1, background });
-      assert.equal(find(ask().render(), "confirm-yes").style.text_color, ink, why);
-    }
-    delete theme.ansi1; delete theme.background;
+    // As the editor's Delete: the theme's red on the raised fill, no block of color; it says what it does. A bare footer, as the editor's.
+    Object.assign(theme, { ansi1: "#f38ba8", raised: "#313244" });
+    const yesButton = find(ask({ yes: "Close" }).render(), "confirm-yes");
+    assert.deepEqual([yesButton.style.text_color, yesButton.style.bg, yesButton.items.at(-1)], ["#f38ba8", "#313244", "Close"]);
+    assert.equal(find(ask().render(), "confirm-yes").items.at(-1), "Confirm", "with no word given, Confirm");
+    assert.equal(find(ask().render(), "confirm-footer").style.border_t, undefined, "no rule over the buttons");
+    delete theme.ansi1; delete theme.raised;
     fire(find(ask().render(), "confirm-yes"), "on_click", {}, cx);
     assert.deepEqual(calls.at(-1), ["x.y", { a: 1 }]);
     ran = calls.length;

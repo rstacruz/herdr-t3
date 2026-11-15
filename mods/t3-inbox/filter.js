@@ -7,6 +7,9 @@ import { glow, tip } from "./tip.js";
 import { stop, pressed, justClosed, within } from "./focus.js";
 import { step, scrollList } from "./list.js";
 import { FIRST } from "./row-model.js";
+import { KEY } from "./store.js";
+import { openMenu } from "./menu.js";
+import { button, radiusOf } from "./button.js";
 
 // The space filter's rows, flush as T3's, and how many show before the list scrolls: the whole rows T3's 23rem holds.
 const SCOPE_ROW = 32, SCOPE_SHOWN = 9;
@@ -14,7 +17,7 @@ const SCOPE_ROW = 32, SCOPE_SHOWN = 9;
 // All spaces, then the space labels (each space with one), then the spaces.
 export function inboxMatches(view) {
   const q = view.search.value().toLowerCase(), sp = spaces();
-  return [{ id: null, name: "All spaces" }, ...knownLabels(sp).map((l) => ({ label: l, name: l })), ...sp.filter((s) => s.id !== shared("t3-home.space"))]
+  return [{ id: null, name: "All spaces" }, ...knownLabels(sp).map((l) => ({ label: l, name: l })), ...sp.filter((s) => s.id !== shared(KEY.home))]
     .filter((s) => s.name.toLowerCase().includes(q));
 }
 
@@ -45,11 +48,9 @@ export function inboxTop(view, t, model) {
   const avatar = (id, name, size) => projectMark(sp.find((s) => s.id === id) ?? { name: name ?? "" }, size, t, ps);
   // T3's top row: search on the left, then the space filter, new space and new tab.
   const asks = props()?.newMenu && machines().length > 1;
-  const tool = (id, label, icon, fn, more) => tip(view, t, id, label, stop(view, t, id, div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(8)
-    .hover((s) => s.bg(t.hover)).on_hover(glow(view, id)).on_mouse_down("left", () => pressed(view))
-    .role("button").accessibility_label(label).on_click(fn)
-    .child(svg(`mods/t3-inbox/icons/${icon}.svg`).size(16).text_color(lit(id, t.dim))), 8), more);
-  // The filter shows what it filters to: the labels picked, else one avatar, two overlapping, or the plain filter icon.
+  const tool = (id, label, icon, fn, more) => tip(view, t, id, label, stop(view, t, id, button(t, id, { icon: `mods/t3-inbox/icons/${icon}.svg`, label, size: "sm", hot: view.hot === id })
+    .on_hover(glow(view, id)).on_mouse_down("left", () => pressed(view)).on_click(fn), radiusOf("sm")), more);
+  // The filter shows what it filters to: one avatar, two overlapping, or the plain filter icon.
   const scoped = sp.filter((s) => scope.includes(s.id)), found = view.matches();
   const choice = (s, i) => {
     const on = s.label ? labels.includes(s.label) : s.id ? scope.includes(s.id) : scope.length === 0 && labels.length === 0;
@@ -60,6 +61,8 @@ export function inboxTop(view, t, model) {
       .on_hover((over, cx) => { if (over && view.scopeAt !== i) { view.scopeAt = i; cx.notify(); } })
       .role("button").accessibility_label(s.label ? `Label ${s.name}` : s.name)
       .on_click((e, cx) => view.pick(s, e.modifiers.shift, cx))
+      // A space's row: the space's menu, as in Spaces; the list closes under it.
+      .when(Boolean(s.id && props()?.menu), (el) => el.on_mouse_down("right", (_e, cx) => { view.scopeOpen = false; openMenu(view, "space", { id: s.id }, cx, props().menu); cx.notify(); }))
       .child(div().relative().flex_none()
         .child(s.id ? avatar(s.id, s.name, 16) : svg(`mods/t3-inbox/icons/${s.label ? "tag" : "folder"}.svg`).size(16).text_color(t.muted))
         // T3's ring is outside its 12px badge; a border here is inside, so 16 and 2 further out.
@@ -83,20 +86,19 @@ export function inboxTop(view, t, model) {
       }
       cx.notify();
     })
-    .trigger(stop(view, t, "inbox-scope", h_flex().id("inbox-scope").h(28).min_w(28).flex_none().items_center().justify_center().rounded(8)
-      .hover((s) => s.bg(t.hover)).on_hover(glow(view, "inbox-scope"))
-      .role("button").accessibility_label(labels.length || scoped.length ? `Filter by space: ${[...labels, ...scoped.map((s) => s.name)].join(", ")}` : "Filter by space")
-      .child(labels.length
-        ? h_flex().max_w(110).px(6).gap(4).items_center().text_size(12).text_color(t.foreground)
-          .child(svg("mods/t3-inbox/icons/tag.svg").size(14).flex_none())
-          .child(div().min_w(0).truncate().child(scoped.length ? `${labels.join(", ")} +${scoped.length}` : labels.join(", ")))
-        : scoped.length > 1
+    .trigger(stop(view, t, "inbox-scope", button(t, "inbox-scope", { size: "sm", hot: view.hot === "inbox-scope", on: view.scopeOpen,
+      wide: labels.length > 0,
+      label: labels.length || scoped.length ? `Filter by space: ${[...labels, ...scoped.map((s) => s.name)].join(", ")}` : "Filter by space",
+      icon: labels.length || scoped.length ? undefined : "mods/t3-inbox/icons/list-filter.svg" }).on_hover(glow(view, "inbox-scope"))
+      // The labels picked, as a tag with their names; else the spaces' marks.
+      .when(labels.length > 0, el => el.child(h_flex().max_w(110).gap(4).items_center().text_size(12).text_color(t.foreground)
+        .child(svg("mods/t3-inbox/icons/tag.svg").size(14).flex_none())
+        .child(div().min_w(0).truncate().child(scoped.length ? `${labels.join(", ")} +${scoped.length}` : labels.join(", ")))))
+      .when(labels.length === 0 && scoped.length > 0, el => el.child(scoped.length > 1
         // T3's second mark overlaps by 4 with a 2px ring of the sidebar's color.
         ? h_flex().children(scoped.slice(0, 2).map((s, i) => i === 0 ? avatar(s.id, s.name, 14)
           : h_flex().flex_none().ml(-6).rounded(6).border(2).border_color(t.chrome).child(avatar(s.id, s.name, 14))))
-        : scoped.length
-          ? avatar(scoped[0].id, scoped[0].name, 16)
-          : svg("mods/t3-inbox/icons/list-filter.svg").size(16).text_color(lit("inbox-scope", t.dim))), 8))
+        : avatar(scoped[0].id, scoped[0].name, 16))), radiusOf("sm")))
     .content(v_flex().id("inbox-scope-panel").w(288).mt(4).p(4).rounded(8)
       .bg(t.popover).border_1().border_color(t.border).shadow_lg().text_size(14)
       .on_key_down((e, cx) => {
@@ -120,7 +122,8 @@ export function inboxTop(view, t, model) {
   const toolsShown = view.topHover || view.scopeOpen || scoped.length > 0 || labels.length > 0 || within(view, ["inbox-scope", "inbox-new-space", "inbox-new-tab"]);
   const top = h_flex().id("inbox-top").h(32).px(8).gap(4).flex_none().items_center()
     .on_hover((hovered, cx) => { view.topHover = hovered; cx.notify(); })
-    // Sized as T3's search field (h-8, 16px icon, a medium 14px placeholder), but a button: it opens Go to.
+    // Sized as T3's search field (h-8, 16px icon, a medium 14px placeholder), but a button: it opens Go to. Not shared/button.js:
+    // it's drawn as a field, as the select triggers are.
     .child(stop(view, t, "inbox-search", h_flex().id("inbox-search").flex_1().h(32).px(8).gap(8).items_center().rounded(6).text_size(14).font_medium()
       .text_color(lit("inbox-search", t.dim)).hover((s) => s.bg(t.hover)).on_hover(glow(view, "inbox-search")).on_mouse_down("left", () => pressed(view))
       // Each opens over its button, before the pointer can report leaving it.

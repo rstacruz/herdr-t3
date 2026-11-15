@@ -15,6 +15,10 @@ for tool in jq rsync; do command -v "$tool" >/dev/null || { echo "update needs $
 for f in "$layout" "$keys"; do
   [ ! -e "$f" ] || jq empty "$f" || { echo "not valid JSON, nothing changed: $f" >&2; exit 1; }
 done
+# Herdr App starts on its own layout when this one names a mod it doesn't have, so don't install one that would.
+missing=$(jq -r '[.. | objects | .mod? | strings | select(startswith("frame-") | not)] | unique[]' "$src/layouts/herdr-t3.json" \
+  | while read -r m; do [ -d "$src/mods/$m" ] || [ -d "$app/mods/$m" ] || echo "$m"; done)
+[ -z "$missing" ] || { echo "the layout names mods that aren't here, nothing changed:" $missing >&2; exit 1; }
 
 mkdir -p "$app/mods" "$app/layouts"
 # One mod at a time: other t3-* folders in the app (yours, a test's) are left alone.
@@ -24,20 +28,25 @@ if [ -d "$app/mods/pulls-review" ]; then
   for m in pulls-review review; do rsync -a --delete $gen --exclude config.json "$src/extras/mods/$m/" "$app/mods/$m/"; done
 fi
 [ ! -d "$app/mods/t3-theme-export" ] || rsync -a --delete $gen "$src/extras/mods/t3-theme-export/" "$app/mods/t3-theme-export/"
+[ ! -d "$app/mods/asciicn-wallpaper" ] || rsync -a --delete $gen "$src/extras/mods/asciicn-wallpaper/" "$app/mods/asciicn-wallpaper/"
 for t in "$src"/extras/themes/*.json; do [ ! -f "$app/themes/$(basename "$t")" ] || cp "$t" "$app/themes/"; done
 
-# The theme picker, stack switches, your focus ring color and the Review and theme-export blocks you added live in the installed layout; keep them across updates.
-# A block's id must stay unique: a duplicate crashes Herdr App.
+# The theme picker, stack switches, your focus ring color and the Review bar and theme-export blocks you added live in the installed layout; keep them across updates.
+# The Review bar goes right before the bar's end and draws the panel's toggle (`toggle`), last and on its own after the counts.
+# With the Review extra installed, its review is a page of the space panel: the `review` block goes in `panel-body`.
+# A block's id must stay unique: a duplicate crashes Herdr App, so a Review bar still named `review`, as its README once had it, becomes `review-bar`.
 old=$(cat "$layout" 2>/dev/null || echo '{}')
-jq --argjson old "$old" '[$old | .. | objects | .focus? | objects | .color][0] as $c
+extra=$([ -d "$app/mods/pulls-review" ] && echo true || echo false)
+jq --argjson old "$old" --argjson extra "$extra" '[$old | .. | objects | .focus? | objects | .color][0] as $c
   | ([$old | .. | objects | select((.id | strings) and .active) | {(.id): .active}] | add // {}) as $active
-  | ([$old | .. | objects | select(.content?.mod? == "pulls-review")][0]) as $review
+  | ([$old | .. | objects | select(.content?.mod? == "pulls-review")][0] | if .id? == "review" then .id = "review-bar" | .content.props.block = "review-bar" else . end | if . then .content.props.toggle = true else . end) as $review
   | ([$old | .. | objects | select(.content?.mod? == "t3-theme-export")][0]) as $export
   | (if $old.theme then .theme = $old.theme else . end)
   | (.. | objects | select((.id | strings) and $active[.id])) |= (.active = $active[.id])
   | (.. | objects | .focus? | objects | .color) |= ($c // .)
-  | (if $review then (.. | objects | select(.id? == "tabs-row") | .children) |= (.[0:1] + [$review] + .[1:]) else . end)
-  | (if $export then (.. | objects | select(.id? == "work") | .children) |= (. + [$export]) else . end)' "$src/layouts/herdr-t3.json" > "$layout.tmp"
+  | (if $review then (.. | objects | select(.id? == "tabs-row") | .children) |= ((map(.id) | index("tabs-end")) as $i | .[0:$i] + [$review] + .[$i:]) else . end)
+  | (if $export then (.. | objects | select(.id? == "work") | .children) |= (. + [$export]) else . end)
+  | (if $extra then (.. | objects | select(.id? == "panel-body") | .children) |= (. + [{ id: "review", type: "block", content: { mod: "review" } }]) else . end)' "$src/layouts/herdr-t3.json" > "$layout.tmp"
 mv "$layout.tmp" "$layout"
 cp "$src/layouts/herdr-t3.svg" "$app/layouts/"
 

@@ -5,23 +5,13 @@ import { stopsInit, stop, focusRoot, onStop } from "./focus.js";
 import { menuJump } from "./list.js";
 import { glow, tip } from "./tip.js";
 import { MOTION } from "./motion.js";
+import { presets } from "./snooze-presets.js";
+import { button, radiusOf } from "./button.js";
 
 // A custom snooze can be far off; its timer needn't be.
 export const DAY = 86400000;
 // Base UI's collision padding, and the Snooze menu's width. shortcut: the width is the presets' widest as drawn, not measured; measure it if presets become editable.
 const NAP_MENU_MARGIN = 5, NAP_MENU_W = 180;
-
-// T3's default snooze menu, in local time: soonest first, one row per wake minute, tonight's gone once it's past.
-function presets(now) {
-  const d = new Date(now), at = (days, h) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, h).getTime();
-  const time = (ms) => { const w = new Date(ms); return `${w.getHours() % 12 || 12}:${String(w.getMinutes()).padStart(2, "0")} ${w.getHours() < 12 ? "am" : "pm"}`; };
-  const day = (ms) => `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(ms).getDay()]} ${time(ms)}`;
-  const inFrom = (hours) => { const ms = now + hours * 3600000; return { label: `In ${hours} hour${hours === 1 ? "" : "s"}`, at: ms, hours, when: new Date(ms).getDate() === d.getDate() ? time(ms) : day(ms) }; };
-  const monday = at((1 - d.getDay() + 7) % 7 || 7, 9);
-  return [inFrom(1), inFrom(3), { label: "This evening", at: at(0, 18), when: time(at(0, 18)) }, { label: "Tomorrow", at: at(1, 9), when: time(at(1, 9)) }, { label: "Next week", at: monday, when: day(monday) }]
-    .filter((p) => p.at > now).sort((x, y) => x.at - y.at)
-    .filter((p, i, xs) => xs.findIndex((q) => Math.floor(q.at / 60000) === Math.floor(p.at / 60000)) === i);
-}
 
 // T3's Custom snooze: when a date and time or a duration wakes, or null for a time that doesn't exist or has passed.
 function customWake({ mode, date, time, amount, unit }, now) {
@@ -80,7 +70,8 @@ function submitCustom(view) {
     return;
   }
   closeOverlay(props().overlay);
-  run(`t3-inbox.custom-snooze:${props().customSnooze}:${at}`);
+  // Opened from the tab bar's breadcrumb, the answer goes there (`answer`), as the Inbox may not be running.
+  run(`${props().answer ?? "t3-inbox.custom-snooze"}:${props().customSnooze}:${at}`);
 }
 
 // A month to pick a day from; days gone by can't be picked. The kit has no calendar of its own.
@@ -89,10 +80,8 @@ function calendar(view, t) {
   const now = new Date(Date.now()), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   const pick = (d) => { view.date = d; view.calendarOpen = false; view.error = null; };
-  const turn = (id, glyph, label, by) => stop(view, t, id, h_flex().id(id).size(36).flex_none().items_center().justify_center().rounded(8).hover((s) => s.bg(t.hover))
-    .role("button").accessibility_label(label)
-    .on_click((_e, cx) => { view.month = new Date(y, m + by, 1); cx.notify(); })
-    .child(svg(`mods/t3-inbox/icons/chevron-${glyph}.svg`).size(16).text_color(t.muted)), 8);
+  const turn = (id, glyph, label, by) => stop(view, t, id, button(t, id, { icon: `mods/t3-inbox/icons/chevron-${glyph}.svg`, label, size: "default", surface: "card", hot: view.hot === id })
+    .on_hover(glow(view, id)).on_click((_e, cx) => { view.month = new Date(y, m + by, 1); cx.notify(); }), radiusOf("default"));
   const day = (d) => {
     const past = d.getTime() < today, on = same(d, view.date), id = `day-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
     return h_flex().id(id).size(36).items_center().justify_center().rounded(8)
@@ -143,12 +132,12 @@ export function customView(view) {
     .when(on, (el) => el.bg(t.selected)).text_color(on ? t.foreground : t.dim).hover((s) => s.text_color(t.foreground))
     .role("button").accessibility_label(name)
     .on_click((_e, cx) => { pick(); view.error = null; cx.notify(); }).child(name));
-  const button = (id, text, primary, act) => stop(view, t, id, h_flex().id(id).h(32).px(11).items_center().rounded(8).border_1().border_color(primary ? t.solid : t.input).text_size(14).font_medium()
-    .bg(primary ? t.solid : t.raised).text_color(primary ? t.solid_foreground : t.foreground)
-    .cursor_pointer().hover((s) => s.opacity(0.88)).role("button").accessibility_label(text).on_click(act).child(text), 8);
+  const dialogButton = (id, text, primary, act) => stop(view, t, id, button(t, id, { text, variant: primary ? "primary" : "outline", size: "default", surface: "card" })
+    .cursor_pointer().on_click(act), radiusOf("default"));
   // NumberInput replays these onto its own step buttons (their ids are its own); inside the frame's 1px, so 7 round.
+  // Not shared/button.js: they're the input's own halves, a hover tint of the card as button.js's.
   const stepper = (glyph, name, side) => h_flex().h_full().px(11).flex_none().items_center().justify_center().cursor_pointer()
-    .when(side === "l", (el) => el.rounded_l(7)).when(side === "r", (el) => el.rounded_r(7)).hover((s) => s.bg(t.hover))
+    .when(side === "l", (el) => el.rounded_l(7)).when(side === "r", (el) => el.rounded_r(7)).hover((s) => s.bg(t.foreground + "12"))
     .accessibility_label(name).child(svg(`mods/t3-inbox/icons/${glyph}.svg`).size(16).flex_none().text_color(t.muted));
   // T3's unit Select, on the kit's: it owns Esc and ↑/↓/Enter opening; the highlight, the pick and a press elsewhere are ours.
   // The trigger is drawn as the date's, the list under it, the chosen one shaded.
@@ -239,8 +228,8 @@ export function customView(view) {
       .child(when)
       .when(Boolean(view.error), (el) => el.child(div().id("custom-error").role("alert").line_height("20px").text_color(t.blocked).child(view.error))))
     .child(h_flex().flex_none().px(24).py(16).gap(8).items_center().justify_end().border_t(1).border_color(t.border)
-      .child(button("custom-cancel", "Cancel", false, done))
-      .child(button("custom-submit", "Snooze", true, (_e, cx) => { submitCustom(view); cx.notify(); }))));
+      .child(dialogButton("custom-cancel", "Cancel", false, done))
+      .child(dialogButton("custom-submit", "Snooze", true, (_e, cx) => { submitCustom(view); cx.notify(); }))));
 }
 
 export function snoozeButton(view, t, a, { now, offer: napOffer, delay }, pick) {

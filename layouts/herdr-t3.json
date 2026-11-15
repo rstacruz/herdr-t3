@@ -7,6 +7,9 @@
   "type": "row",
   "preview": "layouts/herdr-t3.svg",
   "terminal_menu": "t3-menu",
+  "floating": [
+    { "id": "tabs-keys", "content": { "mod": "t3-tabs", "props": { "part": "keys" } }, "edge": "bottom", "align": "end" }
+  ],
   "children": [
     {
       "id": "sidebar",
@@ -51,7 +54,7 @@
             {
               "id": "inbox",
               "type": "block",
-              "content": { "mod": "t3-inbox", "props": { "newMenu": "t3-new-menu", "picker": "t3-picker", "home": "t3-tabs.home" } }
+              "content": { "mod": "t3-inbox", "props": { "newMenu": "t3-new-menu", "picker": "t3-picker", "home": "t3-tabs.home", "menu": "t3-menu" } }
             }
           ]
         },
@@ -98,33 +101,48 @@
           "type": "row",
           "children": [
             {
-              "id": "main",
-              "type": "block",
-              "content": {
-                "tab": "active",
-                "pane": {
-                  "header": {
-                    "content": {
-                      "mod": "t3-pane"
-                    },
-                    "reveal": "always",
-                    "height": 28,
-                    "position": "top"
-                  },
-                  "background": "background",
-                  "border": {
-                    "width": 2,
-                    "color": "background"
-                  },
-                  "focus": {
-                    "width": 2,
-                    "color": "background"
-                  },
-                  "radius": 8,
-                  "gap": 8,
-                  "lone": true
+              "id": "work-main",
+              "type": "stack",
+              "active": "main",
+              "children": [
+                {
+                  "id": "main",
+                  "type": "block",
+                  "content": {
+                    "tab": "active",
+                    "pane": {
+                      "header": {
+                        "content": {
+                          "mod": "t3-pane"
+                        },
+                        "reveal": "always",
+                        "height": 28,
+                        "position": "top"
+                      },
+                      "background": "background",
+                      "border": {
+                        "width": 2,
+                        "color": "background"
+                      },
+                      "focus": {
+                        "width": 2,
+                        "color": "background"
+                      },
+                      "radius": 8,
+                      "gap": 8,
+                      "lone": true
+                    }
+                  }
+                },
+                {
+                  "id": "home-main",
+                  "type": "block",
+                  "content": {
+                    "tab": "active",
+                    "pane": { "background": "background", "border": { "width": 2, "color": "background" }, "focus": { "width": 2, "color": "background" }, "radius": 8, "gap": 8, "lone": true }
+                  }
                 }
-              }
+              ]
             }
           ],
           "padding": [0, 8],
@@ -148,6 +166,30 @@
       ],
       "background": "chrome",
       "resizable": false
+    },
+    {
+      "id": "panel",
+      "type": "column",
+      "resizable": false,
+      "hidden": true,
+      "size": { "weight": 1 },
+      "min": 480,
+      "padding": [0, 8],
+      "children": [
+        { "id": "panel-head", "type": "block", "size": { "px": 40 }, "window_drag": true, "content": { "mod": "t3-chrome", "props": { "part": "panel" } } },
+        {
+          "id": "panel-body",
+          "type": "stack",
+          "active": "files",
+          "background": "background",
+          "radius": 8,
+          "children": [
+            { "id": "files", "type": "block", "content": { "mod": "t3-files" } }
+          ]
+        },
+        { "id": "panel-bottom-inset", "type": "row", "size": { "px": 8 }, "children": [] }
+      ],
+      "background": "chrome"
     }
   ],
   "background": "canvas",

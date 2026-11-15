@@ -7,11 +7,23 @@ app=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 cd "$src"
 fail=0
 
+# Gallery skips recipes over 64 KB; leave room in both translations.
+for recipe in RECIPE.md RECIPE.zh-CN.md; do
+  bytes=$(wc -c < "$recipe") || exit 1
+  [ "$bytes" -le 60000 ] || { echo "FAIL $recipe is $bytes bytes; maximum 60000 for Gallery"; exit 1; }
+done
+
 # shared/ holds the one source; scripts/sync.sh makes the copies.
 for s in shared/*.js; do
   for c in $(find mods extras/mods -name "$(basename "$s")"); do
     cmp -s "$s" "$c" || { echo "FAIL $c differs from $s: edit that one, then run scripts/sync.sh"; fail=1; }
   done
+done
+
+# What scripts/vendor.sh bundles has to run in a mod: no npm or Node imports and none of what Herdr's runtime lacks.
+for f in $(find mods extras/mods -path '*/vendor/*.js'); do
+  grep -nE "(^|[^.])\b(import|from) *[\"'][^./]|require\(|\bprocess\.|\bBuffer\b|\bset(Timeout|Interval)\b|\bWorker\b|WebAssembly|__dirname" "$f" \
+    && { echo "FAIL $f uses what a mod can't (above): bundle it differently in scripts/vendor.sh"; fail=1; }
 done
 
 # The options live here, not in each mod's jsconfig.json: that file is gpui-shell's, gitignored and written fresh by
@@ -30,6 +42,12 @@ for p in $(grep -rhoE --include='*.js' --exclude=gpui-kit.d.ts 'mods/(t3-[a-z-]+
   [ -f "$p" ] || [ -f "extras/$p" ] || { echo "FAIL no such icon: $p"; fail=1; }
 done
 
+# accent is the focus ring's and emphasis's color, never a button's fill (docs/internals/t3-tokens.md「按钮」): its foreground
+# only goes on the few non-buttons filled with it, listed here.
+for f in $(grep -rlE --include='*.js' --exclude=gpui-kit.d.ts 'accent_foreground' shared mods extras/mods); do
+  case $f in extras/mods/review/controls.js|mods/t3-labels/main.js) ;; *) echo "FAIL $f uses accent_foreground: a button takes shared/button.js's colors"; fail=1 ;; esac
+done
+
 # Herdr closes an open dialog or popup on a key bound to tab.close or pane.close; ours are bound to t3-tabs, so each mod that
 # opens as one needs its own `mod:` section, or cmd-w closes the tab behind it. `mod: MOD` is the file's own folder.
 for f in $(grep -rlE --include='*.js' --exclude=gpui-kit.d.ts 'openOverlay|mod\.open' mods extras/mods); do
@@ -40,8 +58,9 @@ for f in $(grep -rlE --include='*.js' --exclude=gpui-kit.d.ts 'openOverlay|mod\.
   done
 done
 
+# render-guard.cjs: what Herdr refuses while a view draws (cx.notify and the rest) fails the check, as it would in the app.
 for f in $(find shared mods extras/mods -name 'check*.cjs'); do
-  out=$(cd "$app" && node "$src/$f" 2>&1) || { echo "FAIL $f"; echo "$out" | tail -20; fail=1; }
+  out=$(cd "$app" && node -r "$src/scripts/render-guard.cjs" "$src/$f" 2>&1) || { echo "FAIL $f"; echo "$out" | tail -20; fail=1; }
 done
 
 scripts/check-update.sh || fail=1
