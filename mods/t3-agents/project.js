@@ -3,11 +3,12 @@
 // draws spaces or opens a tab in one (t3-inbox, t3-agents, t3-pane, t3-picker, t3-spaces, t3-new-menu, t3-tabs, t3-menu).
 import { image, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { exec, readTextFile, appHome, settings, shared, setShared, spaces, panes, run } from "herdr";
+import { checking, exec, readTextFile, appHome, settings, shared, setShared, spaces, panes, run } from "herdr";
 import { Buffer } from "buffer";
 import { createHash } from "crypto";
 import * as fs from "fs/promises";
 import { KEY } from "./store.js";
+import { alpha } from "./color.js";
 
 // T3's project colors in its order, each as Tailwind's 400 (dark themes) and 600 (light).
 const PALETTE = [
@@ -42,16 +43,16 @@ function isDark(t) {
 
 // `ps`: panes(), read once by the caller (each read copies every pane). `follow`: drawn beside a mod that keeps looking
 // (t3-spaces, t3-inbox), so it asks only where no one has answered yet.
-export function projectMark(s, size, t, ps, follow) {
+export function projectMark(mod, s, size, t, ps, follow) {
   const icon = s && projectIcon(s, ps, follow);
   if (icon) return image(icon).size(size).flex_none().rounded(size / 4);
   const text = monogram(s?.name ?? "");
   // Nothing to spell: T3's plain folder.
   if (!text) return h_flex().size(size).flex_none().items_center().justify_center()
-    .child(svg("mods/workspace-chrome/folder.svg").size(size).text_color(t.dim));
+    .child(svg(`${mod}/icons/folder.svg`).size(size).text_color(t.dim));
   const color = tint(s.name, isDark(t));
   // As T3's ProjectMonogram: the color on a 14% wash of itself, bold monospace at its 8.25 in a 16 tile.
-  return h_flex().size(size).flex_none().rounded(size / 4).bg(color + "24").items_center().justify_center()
+  return h_flex().size(size).flex_none().rounded(size / 4).bg(alpha(color, "24")).items_center().justify_center()
     .font_family(settings().font_family ?? "JetBrains Mono").font_bold().text_size(size * 8.25 / 16).text_color(color)
     .child(text);
 }
@@ -121,6 +122,7 @@ function projectIcon(s, ps, follow) {
   const folder = placeOf(s, ps);
   if (!folder) return null;
   const key = iconKey(s, ps), icons = shared(KEY.spaceIcons) ?? {}, known = icons[key] ?? null;
+  if (checking()) return known;
   // As T3's cache: a found icon is looked for again after 10 minutes, a missing one after a minute.
   const stale = !looked.has(key) || Date.now() - looked.get(key) > (known ? 600000 : 60000);
   if (stale && !(follow && key in icons)) {

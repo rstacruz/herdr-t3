@@ -8,6 +8,10 @@ Install or update into `~/.config/herdr-app`:
 scripts/update.sh
 ```
 
+## Privacy
+
+The layout sends no telemetry. The optional Review extra uses its configured analysis service.
+
 ## Additional features
 
 ### Early settle
@@ -46,3 +50,11 @@ Give spaces labels, and filter by them.
 ## Credits and license
 
 Based on [herdr-t3](https://github.com/JinJieBeWater/herdr-t3) by [JinJieBeWater](https://github.com/JinJieBeWater), licensed under the [Apache License 2.0](LICENSE). This fork keeps that license; its changes are listed above and in the git history.
+
+`t3-chrome`, `t3-spaces`, `t3-agents`, `t3-tabs`, `t3-pane`, `t3-new-menu`, `t3-picker` and the layout start from Herdr App's shipped `workspace-chrome`, `spaces`, `agents`, `tabs`, `pane`, `new-menu`, `picker` and `main`. Settle follows T3 Code's design. The Catppuccin themes use the [Catppuccin](https://github.com/catppuccin/catppuccin) palette (MIT License, Copyright (c) 2021 Catppuccin); the T3 Code themes take [T3 Code](https://github.com/pingdotgg/t3code)'s default colors (MIT License, Copyright (c) 2026 T3 Tools Inc.). Icons are [Lucide](https://lucide.dev)'s (ISC License, Copyright (c) Lucide Contributors). The file trees in Files and Review and the panel labels use original [T3 Code](https://github.com/pingdotgg/t3code) (MIT) and [Pierre](https://github.com/pierrecomputer/trees) (Apache-2.0) icon shapes, colored by the active theme. Review counts characters' widths with [get-east-asian-width](https://github.com/sindresorhus/get-east-asian-width)'s table (MIT License, Copyright (c) Sindre Sorhus). Apache-2.0, as Herdr App.
+
+## More
+
+- [herdr-t3-inbox](https://github.com/JinJieBeWater/herdr-t3-inbox): this layout's Inbox sidebar as a standalone mod.
+- [herdling](https://github.com/JinJieBeWater/herdling): a macOS menu bar companion for Herdr.
+- [pi-stuff](https://github.com/JinJieBeWater/pi-stuff): my Pi extensions and skills.

@@ -10,7 +10,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function start(file = null) {
   const host = { file, shown: "A", failWrites: 0 };
-  const Mod = new Function("View", "div", "theme", "settings", "home", "readTextFile", "writeTextFile", source)(
+  const Mod = new Function("checking", "View", "div", "theme", "settings", "home", "readTextFile", "writeTextFile", source)(
+    () => false,
     class {},
     () => "root",
     () => ({ background: host.shown }),

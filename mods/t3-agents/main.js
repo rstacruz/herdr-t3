@@ -5,15 +5,14 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, theme, layout, shared, setShared, setAgentOrder, settings, openOverlay, closeOverlay, props, nextCommand } from "herdr";
 import { descendants, notNews, ownStatus, subAgents, treeStatus } from "./tree.js";
-import { glow, tip } from "./tip.js";
-import { stopsInit, stopsEnd, stop, focusRoot, enter, pressed, justClosed } from "./focus.js";
-import { menuJump } from "./list.js";
+import { stopsInit, stopsEnd, focusRoot, enter } from "./focus.js";
+import { trigger, hang } from "./trigger.js";
+import { menuKeys, litProp, propsLit } from "./list.js";
 import { MOTION, planMotion, flying, leavingRows } from "./motion.js";
 import { agentEntries, agentStatus, STACK, RANK, SECTION } from "./rows.js";
 import { sidebarParts } from "./sidebar.js";
-import { KEY, migrateLocal } from "./store.js";
+import { KEY, closedKey } from "./store.js";
 import { pinList, setPinned } from "./pins.js";
-import { button, radiusOf } from "./button.js";
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
@@ -21,17 +20,19 @@ const SORTS = [
 const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
 
 const SORT_WIDTH = 200;
+// Past this many rows the list is windowed (render); before its first measure it draws this tall, and two rows past each end.
+const WINDOW_AT = 50, FIRST_H = 800, OVERDRAW = 74;
 
 export default class Agents extends View {
   async close() {
-    if (props()?.sortMenu) setShared("t3-agents.sortClosed", Date.now());
+    if (props()?.sortMenu) setShared(closedKey("t3-agents", "sort"), Date.now());
     stopsEnd(this);
   }
 
   init(_props, cx) {
     if (props()?.sortMenu) {
       // It takes the keyboard, as the shipped menu does. As T3's menus: nothing's lit until a key or the pointer arrives, and it fades in.
-      this.at = -1;
+      this.at = propsLit();
       this.keys = cx.focus_handle();
       this.keys.focus();
       cx.timer.after(16, (cx) => { this.shown = true; cx.notify(); });
@@ -44,7 +45,6 @@ export default class Agents extends View {
     });
     this.folded = JSON.parse(localStorage.getItem("folded") ?? "{}");
     // Each agent's last state and when it changed (ms), kept across restarts.
-    migrateLocal([["changed", "changes"]]);
     this.changed = JSON.parse(localStorage.getItem("changes") ?? "{}");
     cx.timer.every(1000, () => this.compute());
     cx.timer.every(30000, (cx) => cx.notify()); // The rows' times move with nothing else changing.
@@ -131,17 +131,7 @@ export default class Agents extends View {
       .bg(t.popover)
       .text_size(14)
       .opacity(this.shown ? 1 : 0).transition("opacity", MOTION)
-      .track_focus(this.keys).on_key_down((e, cx) => {
-        if (e.key === "enter") { if (this.at >= 0) choose(SORTS[this.at]); }
-        else if (e.key === "escape") closeOverlay(props().overlay);
-        else {
-          const to = menuJump(this, e, SORTS.map((s) => s.label), this.at);
-          if (to < 0) return;
-          this.at = to;
-        }
-        cx.stop_propagation();
-        cx.notify();
-      })
+      .track_focus(this.keys).on_key_down(menuKeys(this, SORTS.map((s) => s.label), (at) => choose(SORTS[at])))
       .child(div().px(8).py(6).text_size(12).line_height("16px").font_medium().text_color(t.muted).child("Sort agents"))
       .children(SORTS.map((s, i) => h_flex()
         .id(`sort-${s.id}`)
@@ -249,7 +239,15 @@ export default class Agents extends View {
       if (this.details === gone) this.details = null;
       if (this.detailsOut === gone) this.detailsOut = null;
     }
-    const rows = entries.map((e) => flying(this, e.key, e.el));
+    // A long list draws only the rows in view, scrolled by the wheel (windowed): a frame that built every row of 200 agents
+    // made some 13,000 elements. shortcut: windowed, Tab reaches only the rows drawn; switch to a host virtual list when its rows can hold handlers.
+    const windowed = entries.length > WINDOW_AT;
+    const z = Number(settings()?.zoom) || 1, at = /** @type {any} */ (this).motion.at, total = entries.reduce((sum, e) => sum + e.h, 0);
+    const seen = this.listH ?? FIRST_H, top = this.listTop = windowed ? Math.max(0, Math.min(this.listTop ?? 0, total - seen)) : 0;
+    const rows = windowed
+      ? entries.filter((e) => at.get(e.key).y + e.h > top - OVERDRAW && at.get(e.key).y < top + seen + OVERDRAW)
+        .map((e) => div().absolute().left(0).right(0).top(at.get(e.key).y - top).child(flying(this, e.key, e.el())))
+      : entries.map((e) => flying(this, e.key, e.el()));
 
     return focusRoot(this, v_flex()
       .id("t3-agents-root")
@@ -269,25 +267,25 @@ export default class Agents extends View {
             .justify_between()
             .child(div().text_size(12).font_medium().text_color(t.muted).child("Agents"))
             .child(
-              tip(this, t, "ag-sort", `Sort agents: ${sort.label}`, stop(this, t, "ag-sort", button(t, "ag-sort", { icon: `mods/t3-agents/icons/${sort.icon}.svg`, label: "Sort agents", size: "sm", hot: this.hot === "ag-sort" })
-                .on_hover(glow(this, "ag-sort"))
-                .on_mouse_down("left", (e) => { pressed(this); this.sortFrom = e.bounds; })
-                .on_click((_e, cx) => {
-                  if (justClosed(this, "t3-agents.sortClosed")) { this.sortFrom = null; return; }
-                  this.hot = null; // The menu covers it, before the pointer can report leaving it.
-                  // Hung from the button, right edges together, as T3's menus. No press (the keyboard), the app's default.
-                  const b = this.sortFrom, z = Number(settings()?.zoom) || 1;
-                  this.sortFrom = null;
-                  openOverlay({ mod: "t3-agents", kind: "popup", width: SORT_WIDTH, height: 140, ...(b ? { at: { x: b.x + b.width - SORT_WIDTH * z, y: b.y + b.height + 4 * z } } : {}), props: { sortMenu: true } });
-                  cx.notify();
-                }), radiusOf("sm"))),
+              // Hung from the button, right edges together, as T3's menus. No press (the keyboard), the app's default.
+              trigger(this, t, "ag-sort", { icon: `mods/t3-agents/icons/${sort.icon}.svg`, label: `Sort agents: ${sort.label}`, closed: closedKey("t3-agents", "sort"),
+                onOpen: (b) => { openOverlay({ mod: "t3-agents", kind: "popup", width: SORT_WIDTH, height: 140, ...hang(b, SORT_WIDTH), props: { sortMenu: true, ...litProp(!b) } }); } }),
             ),
       )
       .when(list.length === 0, (el) =>
         el.child(div().px(16).py(24).text_center().text_size(12).line_height("16px").text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
       )
-      .child(v_flex().id("ag-list").flex_1().min_h(0).px(8).pb(8).overflow_y_scroll()
+      .when(!windowed, (el) => el.child(v_flex().id("ag-list").flex_1().min_h(0).px(8).pb(8).overflow_y_scroll()
         // The rows in one box that scrolls, so the leaving ones placed in it scroll with them.
-        .child(v_flex().id("ag-content").relative().w_full().flex_none().gap(STACK).children(leavingRows(this)).children(rows))));
+        .child(v_flex().id("ag-content").relative().w_full().flex_none().gap(STACK).children(leavingRows(this)).children(rows))))
+      .when(windowed, (el) => el.child(v_flex().id("ag-list").flex_1().min_h(0).px(8).pb(8)
+        .child(div().id("ag-window").relative().size_full().overflow_hidden()
+          .on_size_change((size, cx) => { const h = size.height / z; if (h !== this.listH) { this.listH = h; cx.notify(); } })
+          .on_scroll_wheel((e, cx) => {
+            cx.stop_propagation();
+            const next = Math.max(0, Math.min(top - e.delta.y / z, total - seen));
+            if (next !== top) { this.listTop = next; cx.notify(); }
+          })
+          .children(leavingRows(this, top)).children(rows)))));
   }
 }

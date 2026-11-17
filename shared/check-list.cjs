@@ -4,29 +4,17 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function element() {
-  const node = { items: [], handlers: {}, style: {} };
-  const proxy = new Proxy(node, { get(target, key) {
-    if (key in target) return target[key];
-    return (...args) => {
-      if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (key === "children") node.items.push(...args[0]);
-      else if (key.startsWith("on_")) node.handlers[key] = args[0];
-      else if (key === "id") node.key = args[0];
-      else node.style[key] = args[0];
-      return proxy;
-    };
-  } });
-  return proxy;
-}
+const { elements } = require("./check-kit.js");
+const element = elements();
 
 let now = 0, zoom = 2;
 const src = fs.readFileSync(path.join(__dirname, "list.js"), "utf8")
   .replace(/^import .*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ")
-  + "\nglobalThis.list = { step, menuJump, scrollList };";
-const context = vm.createContext({ div: element, settings: () => ({ zoom }), Date: { now: () => now } });
+  + "\nglobalThis.list = { step, menuJump, scrollList, menuKeys, openLit, litProp, propsLit };";
+let closed = [], popupProps = { overlay: "o1" };
+const context = vm.createContext({ div: element, settings: () => ({ zoom }), Date: { now: () => now }, props: () => popupProps, closeOverlay: (id) => closed.push(id) });
 vm.runInContext(src, context);
-const { step, menuJump, scrollList } = context.list;
+const { step, menuJump, scrollList, menuKeys, openLit, litProp, propsLit } = context.list;
 
 // ↑/↓ go round the ends, and with nothing lit start from one.
 assert.equal(step({ key: "down" }, 2, 3), 0);
@@ -116,6 +104,48 @@ const shown = (list) => list.items.map((n) => [n.key, n.style.top]);
   const end = scrollList({}, "l", { count: 2, row: 10, at: 0, height: 40, draw, wheeled: () => keeps.push("moved") });
   end.handlers.on_scroll_wheel({ delta: { y: 10 } }, cx);
   assert.deepEqual([cx.stopped, keeps], [true, []], "nothing to scroll: still not what's under the popup's");
+}
+
+// A menu opened by keys (Enter, →, a shortcut) lights its first row; opened by the pointer, none until an arrow key.
+{
+  assert.deepEqual([openLit(true), openLit(false)], [0, -1]);
+  popupProps = { overlay: "o1", ...litProp(true) }; assert.equal(propsLit(), 0, "a popup opened by keys");
+  popupProps = { overlay: "o1", ...litProp(false) }; assert.equal(propsLit(), -1, "by the pointer");
+  const cx = { stop_propagation() {}, notify() {} }, v = { at: propsLit() };
+  menuKeys(v, ["A", "B"], () => {})({ key: "down" }, cx); assert.equal(v.at, 0, "its first arrow lights the first row");
+  popupProps = { overlay: "o1" };
+}
+
+// A popup menu's keys (menuKeys), with each of its options.
+{
+  const cx = { stop_propagation() { cx.stopped = true; }, notify() {} };
+  const labels = ["Alpha", "Beta", "Gamma"], picks = [];
+  const choose = (at, _cx, keys) => picks.push([at, keys]);
+  const press = (keys, e) => { cx.stopped = false; keys(e, cx); };
+  let v = { at: -1 };
+  const plain = menuKeys(v, labels, choose);
+  press(plain, { key: "down" }); assert.equal(v.at, 0);
+  press(plain, { key: "space" }); press(plain, { key: "enter" });
+  assert.deepEqual(picks.splice(0), [[0, true], [0, true]], "Enter and Space pick the lit row, by keys");
+  closed = []; press(plain, { key: "escape" }); assert.deepEqual(closed, ["o1"], "Escape closes this popup");
+  press(plain, { key: "left" }); press(plain, { key: "right" });
+  assert.deepEqual([closed, picks, v.at], [["o1"], [], 0], "← and → do nothing in a plain menu");
+  // `at`: another field holds the lit row; `close`: Escape's own.
+  v = { pickAt: 1 }; let shut = 0;
+  press(menuKeys(v, labels, choose, { at: "pickAt", close: () => shut++ }), { key: "down" }); assert.equal(v.pickAt, 2);
+  press(menuKeys(v, labels, choose, { at: "pickAt", close: () => shut++ }), { key: "escape" }); assert.equal(shut, 1);
+  // `back`: a submenu's ← closes it; `sub`: → on a row with a submenu picks it.
+  v = { at: 1 }; closed = [];
+  press(menuKeys(v, labels, choose, { back: true }), { key: "left" }); assert.deepEqual(closed, ["o1"]);
+  press(menuKeys(v, labels, choose, { sub: (i) => i === 1 }), { key: "right" }); assert.deepEqual(picks.splice(0), [[1, true]]);
+  v.at = 0; press(menuKeys(v, labels, choose, { sub: (i) => i === 1 }), { key: "right" }); assert.deepEqual(picks, [], "no submenu: → does nothing");
+  // `disabled`: moves skip the row.
+  v = { at: 0 };
+  press(menuKeys(v, labels, choose, { disabled: (i) => i === 1 }), { key: "down" }); assert.equal(v.at, 2);
+  now += 1000; press(menuKeys(v, labels, choose, { disabled: (i) => i === 1 }), { key: "b", key_char: "b" }); assert.equal(v.at, 2, "typing finds no disabled row");
+  // `enter`: false leaves Enter to what has the keyboard in the row (an Edit button).
+  press(menuKeys(v, labels, choose, { enter: () => false }), { key: "enter" });
+  assert.deepEqual([picks, cx.stopped], [[], false]);
 }
 
 console.log("ok: list: ↑/↓ round the ends, Home, End and typing, the highlight kept in view by key and wheel.");

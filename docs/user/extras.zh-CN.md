@@ -6,7 +6,7 @@
 
 ## pulls.review
 
-`extras/mods/pulls-review` 和 `extras/mods/review`：Review 栏和 space 面板里的 Review 页，配合[我的 pulls.review fork](https://github.com/JinJieBeWater/pulls.review/tree/multi-repo)（CLI 叫 `jin.review`）使用。Review 栏统计当前焦点所在工作树有什么可评审的（当前分支上默认分支没有的提交、未提交的文件、要推送和要拉取的提交），点一下在面板的 Review 页打开那份评审，和 Files 并列。每个 space 各有自己的评审，页面显示当前 space 的；页面顶栏左边的范围按钮写着正在看什么，点开可以换：Changes（当前分支对默认分支，按钮后面显示 `head → base`，点 base 可以换成别的本地或远程分支，每个 space 各记一份）、Uncommitted、Outgoing 和 Incoming（要推送和要拉取的提交），或者从 Commits 子菜单选当前分支的某个提交；看某个提交时，后面显示短 SHA，用 `‹ ›` 在这个分支的提交之间前后走。长行默认在面板边缘自动换行；设置里选 `Lines: Scroll` 改为横向滚动，Files 的选择各自独立。Analyze automatically 只对点计数生效。在这个布局里，Review 栏只是面板按钮，代替 logo（logo 在面板的 Review 页签上）：标签栏里没有计数（Review 页的范围菜单里有）；分析状态用这个布局的标记显示：面板关着时在这个按钮里、图标左边，开着时在页签上。在 Herdr 自带布局里计数照旧，没有描边，平时是暗色，悬停或它就是正显示的 diff 时提亮。它也单独发布为 [herdr-pulls-review](https://github.com/JinJieBeWater/herdr-pulls-review)：按[它的 README](https://github.com/JinJieBeWater/herdr-pulls-review/blob/main/README.zh-CN.md) 安装（`herdr.dev/mods/JinJieBeWater/herdr-pulls-review`，或者把两个目录复制进 `~/.config/herdr-app/mods/`），然后让你的 Herdr agent 把 Review 栏的块（`"id": "review-bar"`，props 里带 `"toggle": true`）放进这个布局的 `tabs-row` 这一行、`tabs-end` 前面，紧挨面板开关，再把 `{ "id": "review", "type": "block", "content": { "mod": "review" } }` 加到 `panel-body` 这个 stack 的末尾。装了这个扩展后，`scripts/update.sh` 会自己加上这一页，并在更新布局时保留 Review 栏的块和它的 `toggle`。
+`extras/mods/pulls-review` 和 `extras/mods/review` 为 space 面板添加 Review，使用[我的 pulls.review fork](https://github.com/JinJieBeWater/pulls.review/tree/multi-repo)（`jin.review`）。安装两个 mod，`scripts/update.sh` 加入 review 渲染位。在 Herdr T3 用 + → Review 或 `cmd-shift-g` 打开唯一可关闭标签；布局默认没有 Review 栏，可以自己加；旧纯开关栏自动收成零宽。切换保留范围／组／文件／阅读位置，关闭重加回默认范围。在页内工具栏选择 Changes、Uncommitted、Outgoing、Incoming 或 Commits，与 Files 独立；树保留已看框，并和 Files 共用拖进终端及右键操作，不改当前文件和已看状态。已删除文件只能 Copy path、不能拖动；子组行两者都没有。Herdr 自带布局里的 Review 栏仍用数量打开所选 diff。阅读操作和资源边界见[指南](guide.zh-CN.md)。
 
 Review 跟随你的主题，包括 Graphite 等主题里带透明度的复选框颜色。吸顶文件头保留不透明底色，滚动的代码不会透出并和文件名重叠。
 
@@ -16,21 +16,29 @@ Review 跟随你的主题，包括 Graphite 等主题里带透明度的复选框
 
 ## asciicn 壁纸
 
-把 Home 换成一张静止的 [asciicn](https://asciicn.dev) 风格的画，颜色取自你的主题，换主题或明暗模式时跟着变。自带 4 张 asciicn 的画（灯塔、黄昏山峦、星云、余烬），也可以用你自己的图片或 `.ans` 文件。
+把 Home 换成一张静止的 [asciicn](https://asciicn.dev) 风格的画，颜色取自你的主题，换主题或明暗模式时跟着变。自带 4 张 asciicn 的画（灯塔、黄昏山峦、星云、余烬），也可以用你自己的图片。画只按屏幕实际显示的清晰度绘制，不多画，以减少占用的内存：窗口变大、移到 Retina 屏幕或取景时放大，会重新绘制一张，期间当前这张一直留着。
 
-鼠标移到 Home 的右下角，那里会出现切换器：`‹ ›` 换画。`+` 打开一张卡片，主操作是 **Choose image…**，已经在 Studio 做好的画用 **Import Studio file (.ans)…** 导入。
+鼠标移到 Home 的右下角，那里会出现切换器：`‹ ›` 换画，裁切按钮给当前这张画取景，`+` 添加。长画名或 *Importing…* 截断显示；只有一张画时 `‹ ›` 置灰。
 
-**Choose image…** 选一张图片（PNG、JPG、HEIC 等），默认以 **Braille** 在整个 Home 上预览；可以在同一张预览上试 **Blocks**（方块）或 **Dots**（半调圆点）。**Apply** 保存一张 `.ans` 壁纸并选中它；**Cancel** 回到原来的壁纸，不保存。只保存生成的画，不复制或修改原图；保存后也不能回到图片草稿编辑。
+`+` 打开一个菜单：**Choose image…** 选一张图片（PNG、JPG、HEIC 等），**Open wallpaper folder** 打开存画的文件夹。也可以直接把图片拖到 Home 上。
 
-如果 Apply 已经保存字符画、却无法生成最终壁纸，预览会保持打开。处理提示的问题后，再点 **Apply**：草稿未变且已保存文件的内容仍一致时，沿用这个草稿自己的文件，不重复保存。之后即使取消，已保存的 `.ans` 也会留在文件夹里。
+之后取景卡出现在切换器的位置。读取期间只显示画名；要等一会儿时，再显示进度条和当前步骤（*Reading image…*、*Drawing Dots…*）。文件读不了时写明原因，并给出 **Choose another…** 和 **Close**。画显示出来后卡片向上展开，**Cancel** 和 **Apply** 留在原处。新画准备好之前，当前壁纸一直留着。
 
-想精细调整（对比度、抖动、换其他字符），点 **Create in asciicn Studio…** 展开三步：1. **Open asciicn Studio ↗**；2. 做好画，用画面下方的 **.ans** 按钮保存（会存到「下载」）；3. 回到这里点 **Import Studio file (.ans)…**。导入的 `.ans` 沿用原来的字符画法，不出现图片样式选项。选中的壁纸会保留，新建的 Home 也一样。要删除自己加的画，按 `×`，在确认里核对画名，再确认删除；取消就保持不动。确认还会停止这张画正在进行的转换，旧转换结束也不会把它带回来。
+图片在整个 Home 上以 **Dots**（半调圆点）预览。模式行有 **Dots**、**Braille**、**Blocks**（`░▒▓█`）和 **Quadrants**（窄卡写作 **Quads**）：点击，或在上面用方向键切换。它们照 asciicn 处理图片的方式绘制，颜色取自主题。第一次画某个模式时，原来的画留着、稍微变暗，那个模式的按钮在转圈。切回看过的模式是瞬间的。
 
-你加的画以 `.ans` 文件存在 `~/.config/herdr-app/asciicn-wallpaper/`：辅助入口 **Open folder** 会打开它，直接复制进来的 `.ans` 文件也会出现，在这里改了的会重新画。Braille、方块、象限和半调圆点保留形状；其他 ASCII 字符近似画成越暗越大的短条，所以用字母拼成的画保留明暗，不保留字形。颜色会换成你主题里最接近的颜色，而非原图的精确颜色。画面撑满 Home 的高度；Home 变窄或变宽时只是两边露得少或多，主体始终在视野里。比 Home 窄的画改为撑满宽度，上下各裁掉一点。手机照片在 Herdr 里横过来了，是相机记录的旋转信息没被采用：先在「预览」里转正再选。
+保存前先取景：**Fill** 铺满 Home，可能裁切；**Fit** 显示整张图。拖动、在触控板上双指滑动，或用方向键移动（按住 Shift 移得更远）。用鼠标滚轮或 ⌘ 加滚动（Linux 上是 Ctrl 加滚动）以指针为中心缩放，范围 100%–400%，滑块和它两边的 − + 会跟着动；`-` 和 `=` 也能缩放。**Reset**（或 `0`）回到 100%，画的主体在画面内。**Apply**（或 Enter）保存这张画和构图并选中它；**Cancel**（或 Esc）回到原来的壁纸，什么都不保存。原图不会被修改或复制，只保存由它生成的画。
 
-支持 Unicode、以 `-` 开头的名字，以及 `.hidden.ans` 等普通隐藏文件。外部文件名恰好为 `.ans`、`..ans` 或 `...ans` 时会拒绝，先换个有意义的名字再导入。阴影字符（`░`、`▒`、`▓`）密集的画也能导入，不会再生成过大的图块。
+构图按铺放方式、缩放和对齐保存，所以在新 Home、重启后、换主题以及任何窗口或侧栏宽度下都保持不变。以后想改，选中这张画（内置画也行）再按裁切按钮：它从上次的构图打开，**Apply** 保存新构图。那里不能换模式，要换请重新选原图。
 
-安装：把 `extras/mods/asciicn-wallpaper` 复制到 `~/.config/herdr-app/mods/`，然后在这套布局的设置里，把 **Home shows** 选成 asciicn wallpaper。它由 `scripts/update.sh` 负责更新，不会动你加的画。选图片在 macOS 上、以及装了 `zenity` 和 ImageMagick 的 Linux 上可用；没有 ImageMagick 时用 **Import Studio file (.ans)…**。没有文件选择框的平台（包括 Windows），用 **Open folder** 把 `.ans` 文件复制进去。自带的画来自 asciicn，MIT 许可（`LICENSE-asciicn`）。
+换画之间 Home 不会空白：切换、换主题或 Apply 后，原来的画一直留到下一张加载好，切换器的画名旁边（或 Home 右下角）有一个小圈在转。很快就完成的操作（约六分之一秒以内）不显示任何转圈。
+
+浅色主题里，从图片添加的画像墨画在纸上：照片暗的地方落笔。内置画在明暗主题下明暗不变。横着存的手机照片会先转正。
+
+Apply 未能完成时，卡片保持打开，底部写明原因：处理后再点 **Apply**，它会沿用已经保存的那张画。Apply 成功之前，当前壁纸不会变。删除自己加的画：对它按裁切按钮，点卡片左下角的 **Delete**，在确认里核对画名；构图也一并删除。
+
+你的画是 `~/.config/herdr-app/asciicn-wallpaper/` 里的 `.ans` 文件，即由你的图片画成的画。从别的 Herdr 复制进去的不经预览直接出现在切换器里，铺满 Home；在那里修改的会重新绘制，构图保留。其他 `.ans`（比如从 asciicn Studio 导出的）不显示，会提示一次。文件名可以是 Unicode、以 `-` 开头或隐藏文件（`.hidden.ans`）；名字只是 `.ans`、`..ans`、`...ans` 的文件会被拒绝，先改名。
+
+安装：把 `extras/mods/asciicn-wallpaper` 复制到 `~/.config/herdr-app/mods/`，然后在这套布局的设置里，把 **Home shows** 选成 asciicn wallpaper。它由 `scripts/update.sh` 负责更新，不会动你加的画。选图片在 macOS 上、以及装了 `zenity` 和 ImageMagick 的 Linux 上可用。没有文件选择框的平台（包括 Windows），把图片拖到 Home 上；那里的菜单只有 **Open wallpaper folder**。自带的画来自 asciicn，MIT 许可（`LICENSE-asciicn`）。
 
 ## 主题和设置
 

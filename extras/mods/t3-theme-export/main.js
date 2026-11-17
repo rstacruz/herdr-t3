@@ -2,7 +2,7 @@
 // dark mode included) to ~/.cache/herdr-app-theme.json, so terminal programs such as Pi can follow them.
 // Its block is 0px but shown: a hidden copy never starts. The Pi side: JinJieBeWater/pi-stuff, packages/pi-herdr-theme.
 import { View, div } from "gpui-kit";
-import { theme, settings, home, readTextFile, writeTextFile } from "herdr";
+import { checking, theme, settings, home, readTextFile, writeTextFile } from "herdr";
 
 const file = () => `${home()}/.cache/herdr-app-theme.json`;
 const colors = () => `${JSON.stringify({ name: settings().theme, colors: theme() }, null, 2)}\n`;
@@ -19,7 +19,7 @@ export default class ThemeExport extends View {
   }
 
   async write() {
-    if (this.writing) return;
+    if (checking() || this.writing) return;
     this.writing = true;
     try {
       // A change during a write has no render of its own, so look again after each.

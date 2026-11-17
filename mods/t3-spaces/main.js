@@ -7,16 +7,18 @@
 import { View, div, svg } from "gpui-kit";
 import { foldArrow, planMotion, flying, leavingRows } from "./motion.js";
 import { v_flex, h_flex, Popover } from "gpui-base";
-import { spaces, machines, panes, focused, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, props, layout, nextCommand } from "herdr";
+import { checking, spaces, machines, panes, focused, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, props, layout, nextCommand } from "herdr";
 import { projectMark, tint } from "./project.js";
 import { repoFacts } from "./repos.js";
 import { labelsOf, knownLabels, loadLabels } from "./space-labels.js";
 import { dragGone, glow, hoverKept, tip, tipMark, POINTER_WATCH, pointerMoved } from "./tip.js";
 import { openMenu } from "./menu.js";
-import { stopsInit, stopsEnd, stop, focusRoot, enter, pressed, justClosed } from "./focus.js";
+import { stopsInit, stopsEnd, stop, focusRoot, enter } from "./focus.js";
+import { trigger } from "./trigger.js";
 import { sidebarParts } from "./sidebar.js";
-import { KEY } from "./store.js";
+import { KEY, closedKey } from "./store.js";
 import { button, radiusOf } from "./button.js";
+import { alpha } from "./color.js";
 
 // How long a checkout being opened may take to show up before it's asked for again.
 const OPENING = 5000;
@@ -29,7 +31,7 @@ const listInView = (root = layout()) => {
 };
 
 export default class Spaces extends View {
-  async close() { stopsEnd(this); }
+  async close() { this.repos?.close(); stopsEnd(this); }
 
   init(_props, cx) {
     stopsInit(this, cx);
@@ -74,6 +76,7 @@ export default class Spaces extends View {
   }
 
   checkNew(cx) {
+    if (checking()) return;
     const now = Date.now();
     const sp = spaces();
     // A machine came or went: its heading needn't wait for the next poll.
@@ -87,6 +90,7 @@ export default class Spaces extends View {
   }
 
   refreshMachines(cx) {
+    if (checking()) return;
     cx.spawn(async cx => {
       try {
         const r = await hc(["machine", "ls", "--json"]);
@@ -314,10 +318,10 @@ export default class Spaces extends View {
         || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
     };
     const loadingRow = m => plain(`machine-loading-${m ?? "local"}`, m, ghost => div().when(!ghost, el => el.id(`machine-loading-${m ?? "local"}`))
-      .h(ROW).flex_none().px(10).flex().items_center().text_color(t.dim).child("Loading…"));
+      .h(ROW).flex_none().px(8).flex().items_center().text_color(t.dim).child("Loading…"));
     if (!remote.length) {
       if (!rows.length && this.wanted().size) return [plain("labels-none", null, ghost => div().when(!ghost, el => el.id("labels-none"))
-        .h(ROW).flex_none().px(10).flex().items_center().text_color(t.dim).child("No spaces with these labels"))];
+        .h(ROW).flex_none().px(8).flex().items_center().text_color(t.dim).child("No spaces with these labels"))];
       return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(entry);
     }
     const machineNames = [null, ...remote];
@@ -346,15 +350,19 @@ export default class Spaces extends View {
         // The dot describes the machine, so it follows its name, however short.
         .child(h_flex().flex_1().min_w(0).gap(8).items_center()
           .child(div().min_w(0).truncate().child(m ?? "This computer"))
-          .child(tipMark(this, t, `machine-state-${id}`, connected ? "Connected" : (machine?.state ?? "asleep").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()), div().size(6).rounded_full().flex_none().bg(connected ? t.ansi2 : t.dim))))
+          .child(tipMark(this, t, `machine-state-${id}`, connected ? "Connected" : (machine?.state ?? "asleep").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()), div().size(6).rounded_full().flex_none().bg(connected ? t.ansi2 : t.dim)))
+          .when(machine?.keeps_running_after_logout === false, el => el.child(trigger(this, t, `machine-logout-${id}`, {
+            icon: "mods/t3-spaces/icons/circle-alert.svg", label: "Agents stop when you disconnect. Show the fix", size: "micro", surface: "row", color: t.blocked, open: false,
+            onOpen: () => openOverlay({ mod: "machine-add", kind: "dialog", width: 560 }),
+          }))))
         .when(!connected && !rebuilt, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
         .when(rebuilt, el => el.child(h_flex().flex_none().gap(4).items_center()
           .child(div().max_w(140).truncate().child(repair?.error || "rebuilt ·"))
-          .child(tip(this, t, `machine-connect-${m}`, `Connect ${m}`, stop(this, t, `machine-connect-${m}`, div().id(`machine-connect-${m}`).text_color(repair?.error ? t.blocked : t.muted)
-            .hover(s => s.text_color(t.foreground)).on_hover(glow(this, `machine-connect-${m}`))
+          .child(stop(this, t, `machine-connect-${m}`, div().id(`machine-connect-${m}`).text_color(repair?.error ? t.blocked : t.muted)
+            .hover(s => s.text_color(t.foreground))
             .role("button").accessibility_label(`Connect ${m}`)
             .on_click((_e, cx) => { cx.stop_propagation(); this.reconnect(machine, cx); })
-            .child(repair?.busy ? "Connecting…" : "Connect"), 4)))))
+            .child(repair?.busy ? "Connecting…" : "Connect"), 4))))
         // T3's folder sizes: a 24px + with a 14px icon (icon-xs) and a 12px chevron, in the heading buttons' two columns, 50 and
         // 22px from the sidebar's edge. The -2 sits on the group: on the chevron's own box it threw the whole group past the edge.
         .child(h_flex().flex_none().mr(-2).gap(10).items_center()
@@ -368,7 +376,7 @@ export default class Spaces extends View {
             .text_color(this.overMachine === `machine-${id}` ? t.foreground : t.dim)
             .child(foldArrow("t3-spaces", `machine-fold-${id}`, !folded, 12, this.overMachine === `machine-${id}` ? t.foreground : t.dim))));
       const empty = plain(`machine-new-${id}`, m, ghost => {
-        const el = h_flex().h(ROW).flex_none().px(10).gap(10).items_center().rounded(8)
+        const el = h_flex().h(ROW).flex_none().px(8).gap(10).items_center().rounded(8)
           .text_color(this.hot === `machine-new-${id}` ? t.foreground : t.dim)
           // Laid out as a space's row: the + in the mark's 16px, the words where a name starts.
           .child(div().size(16).flex_none().flex().items_center().justify_center().child(svg("mods/t3-spaces/icons/plus.svg").size(12))).child("New space here");
@@ -436,8 +444,8 @@ export default class Spaces extends View {
   // so a click opens it, and it becomes the checkout's own row. A bare repo has nothing to open: there the click folds.
   repoHead(r, t, ps, ghost) {
     const { w, g, hiding = 0 } = r, rowId = w.id, foldId = `${rowId}-fold`;
-    const el = h_flex().h(ROW).flex_none().px(10).gap(10).items_center().rounded(8)
-      .child(div().flex_none().opacity(0.5).child(projectMark(w, 16, t, ps)))
+    const el = h_flex().h(ROW).flex_none().px(8).gap(10).items_center().rounded(8)
+      .child(div().flex_none().opacity(0.5).child(projectMark("mods/t3-spaces", w, 16, t, ps)))
       .child(div().flex_1().min_w(0).truncate().font_medium().text_color(t.dim).child(w.name))
       .child(this.foldButton(t, foldId, g.repo, hiding, ghost));
     return ghost ? el : stop(this, t, rowId, el.id(rowId)
@@ -456,15 +464,15 @@ export default class Spaces extends View {
     const rowId = `space-${w.id}`;
     const el = v_flex()
       .relative()
-      .px(10)
+      .px(8)
       .h(ROW)
       .flex_none()
       .justify_center()
       .rounded(8)
       .when(on, (el) => el.bg(t.selected))
       // The same tree lines as sub-agents: from the checkout's avatar center, turning into the branch icon.
-      .when(tree === "├─", el => el.child(div().absolute().left(17.25).top(0).bottom(-STACK).w(1.5).bg(t.input)))
-      .when(Boolean(tree), el => el.child(div().absolute().left(17.25).top(-4).h(20).w(9.75).border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input)))
+      .when(tree === "├─", el => el.child(div().absolute().left(15.25).top(0).bottom(-STACK).w(1.5).bg(t.input)))
+      .when(Boolean(tree), el => el.child(div().absolute().left(15.25).top(-4).h(20).w(9.75).border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input)))
       .child(
         h_flex()
           .w_full().min_w(0)
@@ -472,8 +480,8 @@ export default class Spaces extends View {
           .items_center()
           .when(Boolean(tree), el => el.pl(20).child(h_flex().size(16).flex_none().items_center().justify_center()
             .child(svg("mods/t3-spaces/icons/git-branch.svg").size(16).text_color(t.dim))))
-          .when(!tree, el => el.child(projectMark(w, 16, t, ps)))
-          .child(div().min_w(0).max_w(150).truncate().font_medium().text_color(t.foreground + "e6").child(w.name))
+          .when(!tree, el => el.child(projectMark("mods/t3-spaces", w, 16, t, ps)))
+          .child(div().min_w(0).max_w(150).truncate().font_medium().text_color(alpha(t.foreground, "e6")).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t, w.id, ghost) : div().flex_1())
           .when(kids > 0, el => el.child(this.foldButton(t, foldId, g.repo, hiding, ghost))),
       );
@@ -625,8 +633,7 @@ export default class Spaces extends View {
     if (d?.moved) d.drawn = true;
     this.landed = null;
     const asks = props()?.newMenu && machines().length > 1;
-    const tool = (id, label, icon, fn, more) => tip(this, t, id, label, stop(this, t, id, button(t, id, { icon: `mods/t3-spaces/icons/${icon}.svg`, label, size: "sm", hot: this.hot === id })
-      .on_hover(glow(this, id)).on_mouse_down("left", () => pressed(this)).on_click(fn), radiusOf("sm")), more);
+    const tool = (id, label, icon, closed, onOpen, action = undefined) => trigger(this, t, id, { icon: `mods/t3-spaces/icons/${icon}.svg`, label, closed, onOpen, action });
     return focusRoot(this, v_flex().size_full().min_h(0).bg(t.chrome).text_size(14)
       .when(this.dragFocus, el => el.track_focus(this.dragKeys).on_key_down((e, cx) => {
         if (e.keystroke !== "escape" || !this.dragFocus) return;
@@ -640,15 +647,12 @@ export default class Spaces extends View {
         .child(h_flex().flex_none().items_center()
           // Only once some space has a label. Left of the two, so they stay where Inbox's are.
           .when(knownLabels(sp).length > 0, el => el.child(this.labelMenu(t)))
-          .child(tool("space-new", "New space", "folder-plus", (_e, cx) => {
-            this.hot = null;
-            // The layout's menu asks which machine, as its mod.json places it; the shipped one can't, so docked alone it's the active space's.
-            const closing = justClosed(this, `${props()?.newMenu}.pickClosed`);
-            if (!asks) run("space.new");
-            else if (!closing) openOverlay({ mod: props().newMenu, kind: "popup", frame: "none", at: /** @type {any} */ ("top"), offset: 96, width: 576, height: 420, props: { pick: true } });
-            cx.notify();
-          }, { action: asks ? null : "space.new" }))
-          .child(tool("space-new-tab", "New tab", "square-pen", (_e, cx) => { this.hot = null; const menu = props()?.newMenu ?? "new-menu"; if (!justClosed(this, `${menu}.closed`)) run("mod.open", { name: menu }); cx.notify(); }))))
+          // The layout's menu asks which machine, as its mod.json places it; the shipped one can't, so docked alone it's the active space's.
+          .child(tool("space-new", "New space", "folder-plus", closedKey(props()?.newMenu, "pick"), () => {
+            if (!asks) { run("space.new"); return false; }
+            openOverlay({ mod: props().newMenu, kind: "popup", frame: "none", at: /** @type {any} */ ("top"), offset: 96, width: 576, height: 420, props: { pick: true } });
+          }, asks ? null : "space.new"))
+          .child(tool("space-new-tab", "New tab", "square-pen", closedKey(props()?.newMenu ?? "new-menu"), () => run("mod.open", { name: props()?.newMenu ?? "new-menu" })))))
       .child(v_flex().id("space-list").flex_1().min_h(0).overflow_y_scroll()
         .on_mouse_move((e, cx) => this.dragTo(e, cx))
         // Released anywhere in the list, it lands where the gap is.

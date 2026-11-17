@@ -2,11 +2,13 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Popover, Popup, Select, InputState, Input, NumberInput } from "gpui-base";
 import { run, theme, props, settings, closeOverlay } from "herdr";
 import { stopsInit, stop, focusRoot, onStop } from "./focus.js";
-import { menuJump } from "./list.js";
+import { menuJump, openLit } from "./list.js";
+import { menuRow, menuRule, menuHint } from "./menu-row.js";
 import { glow, tip } from "./tip.js";
 import { MOTION } from "./motion.js";
 import { presets } from "./snooze-presets.js";
 import { button, radiusOf } from "./button.js";
+import { alpha } from "./color.js";
 
 // A custom snooze can be far off; its timer needn't be.
 export const DAY = 86400000;
@@ -138,7 +140,7 @@ export function customView(view) {
   // NumberInput replays these onto its own step buttons (their ids are its own); inside the frame's 1px, so 7 round.
   // Not shared/button.js: they're the input's own halves, a hover tint of the card as button.js's.
   const stepper = (glyph, name, side) => h_flex().h_full().px(11).flex_none().items_center().justify_center().cursor_pointer()
-    .when(side === "l", (el) => el.rounded_l(7)).when(side === "r", (el) => el.rounded_r(7)).hover((s) => s.bg(t.foreground + "12"))
+    .when(side === "l", (el) => el.rounded_l(7)).when(side === "r", (el) => el.rounded_r(7)).hover((s) => s.bg(alpha(t.foreground, "12")))
     .accessibility_label(name).child(svg(`mods/t3-inbox/icons/${glyph}.svg`).size(16).flex_none().text_color(t.muted));
   // T3's unit Select, on the kit's: it owns Esc and ↑/↓/Enter opening; the highlight, the pick and a press elsewhere are ours.
   // The trigger is drawn as the date's, the list under it, the chosen one shaded.
@@ -233,10 +235,12 @@ export function customView(view) {
       .child(dialogButton("custom-submit", "Snooze", true, (_e, cx) => { submitCustom(view); cx.notify(); }))));
 }
 
-// Opens a card's snooze menu, as its clock's press does: the flip is set by the press, so here it's cleared.
+// Opens a card's snooze menu from its card or its own menu: a press on the clock opened it by pointer, so only a key-opened menu lights its first row.
 export function openNapMenu(view, address, cx) {
   view.napMenu = address;
-  view.napAt = -1;
+  // Opened by keys (no press on its button), its first row lit; by the pointer, none (list.js openLit).
+  view.napAt = openLit(!view.napPress);
+  view.napPress = false;
   // T3's menu fades in: drawn clear once, then let go (Herdr eases only later changes). It closes at once.
   view.napShown = false;
   cx.timer.after(16, (cx) => { view.napShown = true; cx.notify(); });
@@ -255,12 +259,13 @@ export function snoozeButton(view, t, a, { now, offer: napOffer, delay }, pick) 
       else {
         view.napMenu = view.napRight = null;
         view.napAt = -1;
+        view.napPress = false;
       }
       cx.notify();
     })
     .trigger(h_flex().id(napId).h(20).px(6).flex_none().items_center().justify_center().rounded(6)
       .opacity(napOffer ? 1 : 0).transition("opacity", MOTION).on_hover(glow(view, napId))
-      .on_mouse_down("left", (e) => { view.napRight = e.bounds ? (e.bounds.x + e.bounds.width) / zoom : null; })
+      .on_mouse_down("left", (e) => { view.napPress = true; view.napRight = e.bounds ? (e.bounds.x + e.bounds.width) / zoom : null; })
       .role("button").accessibility_label("Snooze agent")
       .child(svg("mods/t3-inbox/icons/clock.svg").size(12).flex_none().text_color(menu ? t.foreground : lit(napId, t.muted)))
       .when(napOffer, (el) => stop(view, t, napId, el, 6)))
@@ -282,21 +287,8 @@ export function snoozeButton(view, t, a, { now, offer: napOffer, delay }, pick) 
           cx.notify();
         })
         .children(choices.flatMap((p, i) => [
-          ...(p.custom ? [div().h(1).mx(8).my(4).flex_none().bg(t.border)] : []),
-          h_flex().id(`snooze-${i}-${a.address}`).h(28).px(8).gap(8).flex_none().items_center().rounded(4)
-            .when(i === view.napAt, (row) => row.bg(t.selected))
-            .on_hover((on, cx) => {
-              const at = on ? i : view.napAt === i ? -1 : view.napAt;
-              if (at !== view.napAt) { view.napAt = at; cx.notify(); }
-            })
-            .role("button").accessibility_label(p.label)
-            .on_click((_e, cx) => {
-              cx.stop_propagation();
-              pick(a, p, cx);
-              cx.notify();
-            })
-            .child(div().flex_none().text_color(t.foreground).child(p.label))
-            .when(Boolean(p.when), (row) => row.child(div().flex_none().ml_auto().text_size(12).font_medium().text_color(t.dim).child(p.when))),
+          ...(p.custom ? [menuRule(t)] : []),
+          menuRow(view, t, `snooze-${i}-${a.address}`, { at: [view, "napAt", i], label: p.label, trail: p.when ? menuHint(t, p.when) : null, pick: (cx) => { pick(a, p, cx); cx.notify(); } }),
         ])));
     }), { delay, off: menu });
 }

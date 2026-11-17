@@ -1,4 +1,4 @@
-import { kidStatus, descendants, ownStatus, treeStatus, snoozeOf } from "./tree.js";
+import { kidStatus, descendants, ownStatus, snoozeOf, subAgents, treeStatus } from "./tree.js";
 
 // The settled tail opens on this many, then grows by MORE.
 export const FIRST = 10, MORE = 25;
@@ -7,7 +7,7 @@ const GRACE = 2000;
 const BUSY = new Set(["working", "blocked"]);
 // The last word when times tie, so the order doesn't follow the order the data came in.
 const byAddress = (x, y) => x.address.localeCompare(y.address);
-export const byRecent = (x, y) => y.since - x.since || byAddress(x, y);
+const byRecent = (x, y) => y.since - x.since || byAddress(x, y);
 // The cards: one waiting on the person first, however long it has waited; the rest by when each came back.
 export const byCard = (x, y) => Number(y.blocked) - Number(x.blocked) || byRecent(x, y);
 
@@ -82,7 +82,7 @@ export function inboxFields({ every, all, term, pending, changed, now, inView })
     return v ? v.split(":").map(Number) : null;
   };
   const listed = new Map(every.map((a) => [a.address, a.status]));
-  const kids = new Map(every.map((a) => [a.address, descendants(all, a.address).map((k) => kidStatus(k, listed))]));
+  const under = subAgents(every, all), kids = new Map(every.map((a) => [a.address, under(a.address)]));
   // It, or anything under it, is working or needs the person.
   const busy = (a) => BUSY.has(ownStatus(a.status, a.address, all)) || kids.get(a.address).some((s) => BUSY.has(s));
   // It with what's under it (tree.js).

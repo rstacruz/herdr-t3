@@ -82,21 +82,21 @@ _Avoid_: preferences、config、T3 settings
 _Avoid_: picker（mod 名）、Search（Inbox 里的入口名）
 
 **Action**：
-标签栏运行按钮里的一条命令，在新标签或分屏里运行。
+详情 Actions 行里的一条命令，在新标签或分屏里运行。
 _Avoid_: task、script
 
 **Review**：
-一个 space 的待评审内容，以及显示它的 space 面板 Review 页；Review 栏是它在标签栏里的入口。
+一个 space 的待评审内容，以及显示它的唯一可关闭 Review 标签；切换保留，关闭释放。
 _Avoid_: diff、changes、评审窗格
 
 **space 面板**：
-窗口右侧唯一的面板，页面有 Files 和 Review，同时只显示一页，内容跟随当前 space；开没开、在哪一页、放没放大，按 space 各记一份。两页共用一套框架：顶部工具栏，其下内容在左、导航列在右。
+窗口右侧唯一的面板，由文件标签、通用 Files 标签和可选的唯一 Review 标签组成。内容跨终端标签跟随 space；开关、放大、标签列表和当前项按 space 各记，宽度全窗口一份。隐藏保留，关闭释放。
 _Avoid_: 侧边面板、panel 栏
 
 **导航列**：
-space 面板一页里内容右边的那一列：列头加文件树。每页各记自己的宽度和开关。
+space 面板一个标签里内容右边的那一列：列头加文件树。Files 和 Review 各记自己的宽度和开关。
 _Avoid_: aside、侧栏、文件栏
 
 **Files**：
-space 面板里只读浏览 space 文件夹的那一页。
+space 面板里共用的只读文件树与预览；每个文件一个标签，通用 Files 标签显示整宽树。
 _Avoid_: 文件浏览器、file explorer

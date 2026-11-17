@@ -9,7 +9,7 @@ export const CHAR = 7.25, MAX_COLUMNS = 1000;
 // Code lines go to the list in runs of up to this many, one item each: Herdr's v_virtual_list takes at most 10000 items,
 // which a group of a few thousand changed lines passes when each line is one.
 // shortcut: a group past about 5000 hunks still passes it; fold its files there if one ever does.
-export const RUN = 32;
+const RUN = 32;
 
 /** Where code starts in a row, past the line numbers and sign: notes and placeholders line up with it. */
 export const codeInset = (split) => split ? 52 : 92;
@@ -138,7 +138,8 @@ export function wrapRow(row, cols, wide = 2) {
 
 // A group's rows run past the 8 MB one read carries: a read asks for at most ROW_BUDGET changed lines, from the files in view
 // and the LOOKAHEAD after them, so the rest come as the list reaches them. As the daemon's FIRST_ROWS for an open.
-export const ROW_BUDGET = 3000, LOOKAHEAD = 10;
+const ROW_BUDGET = 3000;
+export const LOOKAHEAD = 10;
 
 /** The paths of a read's rows: in view or just after, without rows and not folded, while they fit (the first always). */
 export function rowsToAsk(paths, fileAt, inView, collapsed) {
@@ -214,14 +215,14 @@ export function pairRows(rows) {
   return pairs;
 }
 
-/** The width a note's text wraps at, past the row's or card's padding and border and the mark before it. */
+/** The width a note's text wraps at, past the row's or card's padding and the mark before it. */
 // shortcut: Herdr's Markdown wraps without its inline code chips' padding, so a line of them runs past the width;
 // 32px of slack covers a few chips a line. A wrap that counted the chips would drop it.
-export const noteWidth = (width, anchored) => (anchored ? Math.min(width - 16, 800) - 22 : width - 24) - 20 - 32;
+export const noteWidth = (width, anchored) => (anchored ? Math.min(width - 24, 800) - 20 : width - 24) - 20 - 32;
 
 /**
  * Rough height of a note, as the app's AnalysisNoteCard lays it out: a file's own note is a row across the file
- * (12px in, 6px padding), a line's is a card under the line (8px in, at most 800 wide, 1px border, 4px padding,
+ * (12px in, 6px padding), a line's is a card under the line (12px in, at most 800 wide, 10 by 4 padding,
  * 3px apart). Either has a 12px mark and an 8px gap before its text. Characters take charWidth's columns.
  */
 export function noteHeight(text, width, anchored) {

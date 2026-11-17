@@ -44,7 +44,7 @@ is .theme "$app/layouts/herdr-t3.json" win98
 is '[.. | objects | .focus? | objects | .color][0]' "$app/layouts/herdr-t3.json" accent
 is '[.. | objects | select(.id? == "my-review")] | length' "$app/layouts/herdr-t3.json" 1
 # Right before the bar's end, drawing the panel's toggle with its counts: one control.
-is '[.. | objects | select(.id? == "tabs-row") | .children[].id] | join(",")' "$app/layouts/herdr-t3.json" tabs,actions,my-review,tabs-end
+is '[.. | objects | select(.id? == "tabs-row") | .children[].id] | join(",")' "$app/layouts/herdr-t3.json" tabs,my-review,tabs-end,actions,window-end,tabs-end-inset
 is '[.. | objects | select(.id? == "my-review") | .content.props.toggle][0]' "$app/layouts/herdr-t3.json" true
 is .global.a "$app/keys.json" b
 is '.["layout:herdr-t3"]["cmd-p"]' "$app/keys.json" mod.open:t3-picker
@@ -56,22 +56,15 @@ case "$out" in *"kept, not in the repo: cmd-x = mine"*) ;; *) echo "FAIL check-u
 # The Review extra's review is the space panel's page, after Files; no id twice.
 pages='[.. | objects | select(.id? == "panel-body") | .children[].id] | join(",")'
 unique='[.. | objects | .id? | strings] | length == (unique | length)'
-is "$pages" "$app/layouts/herdr-t3.json" files,review
+is "$pages" "$app/layouts/herdr-t3.json" files,panel-empty,review
 is "$unique" "$app/layouts/herdr-t3.json" true
 
 # Again changes nothing: neither Review block is doubled.
 HERDR_APP_HOME="$app" "$src/scripts/update.sh" >/dev/null
 is '[.. | objects | select(.id? == "my-review")] | length' "$app/layouts/herdr-t3.json" 1
-is "$pages" "$app/layouts/herdr-t3.json" files,review
-
-# A Review bar named `review`, as the extra's README once had it, gives that id to the panel's page: it's renamed, its own sizing with it.
-jq '(.. | objects | select(.id? == "my-review")) |= (.id = "review" | .content.props.block = "review")' "$app/layouts/herdr-t3.json" > "$app/l" && mv "$app/l" "$app/layouts/herdr-t3.json"
-HERDR_APP_HOME="$app" "$src/scripts/update.sh" >/dev/null
-is '[.. | objects | select(.content?.mod? == "pulls-review") | .id + " " + .content.props.block] | join(",")' "$app/layouts/herdr-t3.json" "review-bar review-bar"
-is "$unique" "$app/layouts/herdr-t3.json" true
-is "$pages" "$app/layouts/herdr-t3.json" files,review
+is "$pages" "$app/layouts/herdr-t3.json" files,panel-empty,review
 
 # Without the extra, the panel has Files alone: a block naming a mod that isn't there shows an error.
 rm -rf "$app/mods/pulls-review" "$app/mods/review"
 HERDR_APP_HOME="$app" "$src/scripts/update.sh" >/dev/null
-is "$pages" "$app/layouts/herdr-t3.json" files
+is "$pages" "$app/layouts/herdr-t3.json" files,panel-empty

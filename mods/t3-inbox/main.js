@@ -24,7 +24,7 @@ import { inboxDrag } from "./drag.js";
 import { inboxRowView } from "./row-view.js";
 import { inboxList } from "./list-view.js";
 import { sidebarParts } from "./sidebar.js";
-import { KEY, migrate, migrateLocal } from "./store.js";
+import { KEY } from "./store.js";
 import { pinList } from "./pins.js";
 import { writeLabel } from "./labels.js";
 import { labelsOf, knownLabels, loadLabels } from "./space-labels.js";
@@ -37,9 +37,6 @@ export default class Inbox extends View {
 
   init(_props, cx) {
     if (props()?.customSnooze) return initCustom(this, cx);
-    // Published alone, this may be the layout's only mod: keys under old names move first (docs/internals/storage.md).
-    migrate();
-    migrateLocal([["open", "settled.open"], ["working-open", "working.open"], ["snoozed-open", "snoozed.open"]]);
     stopsInit(this, cx);
     // A menu of its own holds the keyboard off every stop for as long as it's open, and gives it back to the one it opened from.
     // Only while the keyboard's really in it: one left open as the Inbox hid would hold the mode with the keyboard back in the terminal.

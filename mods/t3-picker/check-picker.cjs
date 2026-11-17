@@ -4,31 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function element() {
-  const node = { items: [], handlers: {} };
-  const proxy = new Proxy(node, { get(target, key) {
-    if (key in target) return target[key];
-    return (...args) => {
-      if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (key === "child") node.items.push(args[0]);
-      else if (key === "children") node.items.push(...args[0]);
-      else if (key === "on_key_down") node.handlers.key = args[0];
-      else if (key === "on_click") node.handlers.click = args[0];
-      else if (key === "id") node.key = args[0];
-      else if (key === "opacity") node.opacity = args[0];
-      else if (key === "bg") node.fill = args[0];
-      else if (key === "tab_index") node.tabIndex = args[0];
-      return proxy;
-    };
-  } });
-  return proxy;
-}
-const find = (node, id) => {
-  if (!node || typeof node !== "object") return null;
-  if (node.key === id) return node;
-  for (const child of node.items) { const found = find(child, id); if (found) return found; }
-  return null;
-};
+const kit = require("./check-kit.js");
+const element = kit.elements(), { find } = kit;
 
 const pi = { name: "Pi", key: "pi", agent: true }, git = { name: "Git Changes", key: "lazygit", agent: false };
 const zsh = { name: "zsh", key: "shell", shell: true }, vite = { name: "Vite", key: "vite", agent: false };
@@ -56,7 +33,7 @@ const context = vm.createContext({
   shared: (k) => shared[k], setShared: (k, v) => { shared[k] = v; },
   namer: () => (p) => p.program.name, programOf: (p) => p.program, modStatus: () => null, projectMark: element,
 });
-const src = ["store.js", "tree.js", "list.js", "zoom.js", "focus.js", "program.js", "main.js"].map((f) => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n").replace(/^import .*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ").replace("export default class", "globalThis.Mod = class");
+const src = ["color.js", "store.js", "tree.js", "status-mark.js", "list.js", "zoom.js", "focus.js", "program.js", "palette.js", "main.js"].map((f) => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n").replace(/^import .*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ").replace("export default class", "globalThis.Mod = class");
 vm.runInContext(src, context);
 const open = () => { const m = new context.Mod(); m.init({}, cx); return m; };
 const keys = (m) => find(m.render(), "picker-rows")?.items.map((n) => n.key) ?? [];
@@ -95,11 +72,11 @@ m = open(); m.input.type("fix login");
 assert.deepEqual(keys(m), ["pane:p2", "pane:p3", "pane:p1"]);
 
 // A click goes to its row's pane.
-m = open(); find(m.render(), "pane:p3").handlers.click({}, cx);
+m = open(); find(m.render(), "pane:p3").handlers.on_click({}, cx);
 assert.deepEqual(take(), [["pane.focus", { pane: "p3" }]]);
 
 // ctrl+d closes the pane through the tab bar, which asks first.
-m = open(); m.input.type("lazygit"); m.render().handlers.key({ key: "d", modifiers: { control: true } }, cx);
+m = open(); m.input.type("lazygit"); m.render().handlers.on_key_down({ key: "d", modifiers: { control: true } }, cx);
 assert.deepEqual(take(), [["t3-tabs.close-pane:p2", null]]);
 
 // Home has no row, mod or shell.
@@ -108,14 +85,14 @@ panes.push({ pane: "ph", tab: "c1", mod: "review", title: "Home", program: {}, f
 { const rows = keys(open()); assert.ok(!rows.includes("pane:ph")); assert.ok(!rows.includes("pane:pb")); }
 panes.splice(-2); delete shared["t3-tabs.home"];
 // Its contents are there from the first frame: a fade leaves the popup blank.
-assert.notEqual(typeof open().render().opacity, "number");
+assert.notEqual(typeof open().render().style.opacity, "number");
 // Closing says so, for the buttons that open it to toggle.
 { const before = Date.now(); open().close(); assert.ok(shared["t3-picker.closed"] >= before); }
 
 // Status follows the shared attention rule in either mode: quiet labels hide done, new work or waking brings it back.
 panes[1].status = "done";
 terms = [{ address: "t1", turn: 1, labels: {} }];
-const hasDone = n => Boolean(n && typeof n === "object" && (n.fill === "#done" || n.items.some(hasDone)));
+const hasDone = n => Boolean(n && typeof n === "object" && (n.style.bg === "#done" || n.items.some(hasDone)));
 const done = () => hasDone(find(open().render(), "pane:p1"));
 assert.ok(done());
 terms[0].labels.settled = "1:1"; assert.equal(done(), false);
@@ -123,5 +100,5 @@ terms[0].turn = 2; assert.ok(done());
 terms[0].labels = { snoozed: String(Date.now() + 60000) }; assert.equal(done(), false);
 terms[0].labels.snoozed = String(Date.now() - 1); assert.ok(done());
 // Tab reaches the footer's New tab, as every control in a popup.
-assert.equal(find(open().render(), "picker-new").tabIndex, 0);
+assert.equal(find(open().render(), "picker-new").style.tab_index, 0);
 console.log("ok picker");

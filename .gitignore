@@ -1,5 +1,3 @@
 gpui-kit.d.ts
 jsconfig.json
 .DS_Store
-# Screenshots are evidence for one machine, not part of the layout: kept beside their notes, never committed.
-docs/research/**/*.png

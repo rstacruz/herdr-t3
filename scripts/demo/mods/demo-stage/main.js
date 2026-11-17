@@ -16,6 +16,7 @@ export default class Stage extends View {
         const command = await nextCommand(), cut = command.indexOf(":");
         const [name, arg] = cut < 0 ? [command, ""] : [command.slice(0, cut), command.slice(cut + 1)];
         const n = shared("t3-actions")?.list.length ?? 0;
+        if (name === "overlay") openOverlay(JSON.parse(arg));
         if (name === "actions-menu") openOverlay({ mod: "t3-actions", kind: "popup", at: { x: Number(arg) - 8, y: 36 * (Number(settings().zoom) || 1) },
           width: 280, height: Math.min(420, 45 + n * 28), props: { actions: "menu" } });
         if (name === "menu") { const { at, ...p } = JSON.parse(arg); this.menu = { at, id: openOverlay({ mod: "t3-menu", kind: "popup", width: 220, height: 260, at, props: p }) }; }

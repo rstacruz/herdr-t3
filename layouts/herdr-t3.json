@@ -92,8 +92,10 @@
           "background": "chrome",
           "children": [
             { "id": "tabs", "type": "block", "size": { "weight": 1 }, "window_drag": true, "content": { "mod": "t3-tabs" } },
-            { "id": "actions", "type": "block", "size": { "px": 108 }, "window_drag": true, "content": { "mod": "t3-actions", "props": { "block": "actions" } } },
-            { "id": "tabs-end", "type": "block", "size": { "px": 36 }, "window_drag": true, "content": { "mod": "t3-tabs", "props": { "part": "end", "block": "tabs-end" } } }
+            { "id": "tabs-end", "type": "block", "size": { "px": 32 }, "window_drag": true, "content": { "mod": "t3-tabs", "props": { "part": "end", "block": "tabs-end" } } },
+            { "id": "actions", "type": "block", "size": { "px": 28 }, "window_drag": true, "content": { "mod": "t3-actions", "props": { "block": "actions", "details": true } } },
+            { "id": "window-end", "type": "block", "size": { "px": 0 }, "window_drag": true, "content": { "mod": "t3-tabs", "props": { "part": "window", "block": "window-end" } } },
+            { "id": "tabs-end-inset", "type": "row", "size": { "px": 12 }, "window_drag": true, "children": [] }
           ]
         },
         {
@@ -174,20 +176,17 @@
       "hidden": true,
       "size": { "weight": 1 },
       "min": 480,
-      "padding": [0, 8],
       "children": [
-        { "id": "panel-head", "type": "block", "size": { "px": 40 }, "window_drag": true, "content": { "mod": "t3-chrome", "props": { "part": "panel" } } },
+        { "id": "panel-head", "type": "block", "size": { "px": 40 }, "padding": [0, 12], "window_drag": true, "content": { "mod": "t3-chrome", "props": { "part": "panel" } } },
         {
           "id": "panel-body",
           "type": "stack",
-          "active": "files",
-          "background": "background",
-          "radius": 8,
+          "active": "panel-empty",
           "children": [
-            { "id": "files", "type": "block", "content": { "mod": "t3-files" } }
+            { "id": "files", "type": "block", "content": { "mod": "t3-files" } },
+            { "id": "panel-empty", "type": "block", "content": { "mod": "t3-chrome", "props": { "part": "surface-empty" } } }
           ]
-        },
-        { "id": "panel-bottom-inset", "type": "row", "size": { "px": 8 }, "children": [] }
+        }
       ],
       "background": "chrome"
     }

@@ -34,12 +34,11 @@ for t in "$src"/extras/themes/*.json; do [ ! -f "$app/themes/$(basename "$t")" ]
 # The theme picker, stack switches, your focus ring color and the Review bar and theme-export blocks you added live in the installed layout; keep them across updates.
 # The Review bar goes right before the bar's end and draws the panel's toggle (`toggle`), last and on its own after the counts.
 # With the Review extra installed, its review is a page of the space panel: the `review` block goes in `panel-body`.
-# A block's id must stay unique: a duplicate crashes Herdr App, so a Review bar still named `review`, as its README once had it, becomes `review-bar`.
 old=$(cat "$layout" 2>/dev/null || echo '{}')
 extra=$([ -d "$app/mods/pulls-review" ] && echo true || echo false)
 jq --argjson old "$old" --argjson extra "$extra" '[$old | .. | objects | .focus? | objects | .color][0] as $c
   | ([$old | .. | objects | select((.id | strings) and .active) | {(.id): .active}] | add // {}) as $active
-  | ([$old | .. | objects | select(.content?.mod? == "pulls-review")][0] | if .id? == "review" then .id = "review-bar" | .content.props.block = "review-bar" else . end | if . then .content.props.toggle = true else . end) as $review
+  | ([$old | .. | objects | select(.content?.mod? == "pulls-review")][0] | if . then .content.props.toggle = true else . end) as $review
   | ([$old | .. | objects | select(.content?.mod? == "t3-theme-export")][0]) as $export
   | (if $old.theme then .theme = $old.theme else . end)
   | (.. | objects | select((.id | strings) and $active[.id])) |= (.active = $active[.id])

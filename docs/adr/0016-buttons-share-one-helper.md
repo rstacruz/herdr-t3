@@ -13,6 +13,6 @@
 
 ## Consequences
 
-- helper 只管外观和 `role`；点击（或传 `act`）、`hot` 的悬停追踪、`stop()`、`tip()` 仍由调用方加，因为 Review 和 Files 不带 `focus.js`。
+- helper 只管外观和 `role`；点击（或传 `act`）、`hot` 的悬停追踪、`stop()`、`tip()` 仍由调用方加：键盘停靠和提示各有自己的状态（`focus.js`、`tip.js`），不是每个画按钮的视图都要（2026-11-15 修订：原写「Review 和 Files 不带 `focus.js`」，两者现在都带）。打开弹层的按钮另有 `trigger()` 把这几样接好。
 - 行、标签、分段切换、日历格、select 触发框、按钮组、输入框的 stepper、行内链接、Inbox 行上的悬停控件不算按钮，保留各自画法（表下列出）。侧栏行里的按钮走 `row` 底面：照 T3 行控件只变亮、没有底色。
-- 迁移后有可见变化：ghost 图标静止色统一为 `dim`（Files、Review 原为 `muted`），卡片、弹层和对话框上的悬停改为可见的 foreground 7%，禁用统一 0.64，对话框按钮悬停从 0.88 改为 0.9，Actions 编辑器的 Save 禁用时保留 `solid` 底、整体变淡，开着弹层的按钮在 chrome 上带 `selected` 底。
+- 迁移后有可见变化：ghost 图标静止色统一为 `dim`（Files、Review 原为 `muted`），卡片、弹层和对话框上的悬停改为可见的 foreground 7%，禁用统一 0.64，对话框按钮悬停从 0.88 改为 0.9，Actions 编辑器的 Save 禁用时保留 `solid` 底、整体变淡，开着弹层的按钮在 chrome 上带 on 底（原为 `selected`；2026-11-15 起是 `foreground` 7%，见 t3-tokens「按钮」）。

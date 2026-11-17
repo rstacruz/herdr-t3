@@ -1,4 +1,4 @@
-// A right-click opens the menu of what's under it (docs/research/context-menu-plan.md). scripts/sync.sh copies this to the
+// A right-click opens the menu of what's under it (docs/internals/specs/menus.md). scripts/sync.sh copies this to the
 // mods that use it.
 import { openOverlay } from "herdr";
 

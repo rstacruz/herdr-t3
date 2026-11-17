@@ -6,39 +6,15 @@ const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function element(kind = "div", source) {
-  const node = { kind, source, items: [], handlers: {}, style: {}, hoverStyle: {} };
-  const proxy = new Proxy(node, { get(target, key) {
-    if (key in target) return target[key];
-    return (...args) => {
-      if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (key === "child" || key === "trigger") node.items.push(args[0]);
-      else if (key === "children") node.items.push(...args[0]);
-      else if (key === "on_mouse_down") node.handlers[`${key}:${args[0]}`] = args[1];
-      else if (key.startsWith("on_")) node.handlers[key] = args[0];
-      else if (key === "id") node.key = args[0];
-      else if (key === "hover") { const hovered = element(); args[0](hovered); node.hoverStyle = hovered.style; }
-      else node.style[key] = args.length === 1 ? args[0] : args;
-      return proxy;
-    };
-  } });
-  return proxy;
-}
-const find = (node, id) => !node || typeof node !== "object" ? null : node.key === id ? node : node.items.map(c => find(c, id)).find(Boolean) ?? null;
-const strings = (node) => typeof node === "string" ? [node] : node && typeof node === "object" ? node.items.flatMap(strings) : [];
-const walk = (node) => node && typeof node === "object" ? [node, ...node.items.flatMap(walk)] : [];
+const kit = require("./check-kit.js");
+const element = kit.elements({ args: "auto", adds: ["child", "trigger"] }), { find, strings, walk, fire, plain } = kit;
 const keys = (node) => node.items.map(n => typeof n.key === "string" ? n.key : n.kind);
-function fire(node, event, ...args) {
-  assert.ok(node, `missing event target: ${event}`);
-  assert.equal(typeof node.handlers[event], "function", event);
-  return node.handlers[event](...args);
-}
-const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const commands = [];
 const zoom = 1.1, calls = [], overlays = [], closed = [], notes = [], launched = [], state = {}, shown = { pane: "p1", tab: "b" };
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 const env = {
+  checking: () => false,
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
   svg: (source) => element("svg", source), image: (source) => element("image", source), Input: { new: () => element("input") }, HoverCard: { new: (id) => element("hovercard").id(id) }, Popup: { new: (id, trigger) => element("popup").id(id).child(trigger) },
   InputState: { new: () => ({ on() {}, value: () => "", focus() {} }) },
@@ -54,7 +30,7 @@ const env = {
   // Herdr T3's layout: the space panel, its pages Files and Review.
   layout: () => ({ id: "root", children: [{ id: "work" }, { id: "panel", hidden: true, children: [{ id: "panel-body", active: "files", children: [{ id: "files" }, { id: "review" }] }] }] }),
 };
-const source = ["button.js", "store.js", "details.js", "tip.js", "list.js", "focus.js", "panel.js", "review-git.js", "bar.js", "open.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
+const source = ["color.js", "button.js", "store.js", "details.js", "tip.js", "list.js", "menu-row.js", "focus.js", "trigger.js", "panel.js", "review-git.js", "status-mark.js", "bar.js", "open.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
   .replace(/^import [^;]*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export /gm, "");
 // Timers fire at once: a card that waits 150ms is up by the next render.
 const cx = { notify() {}, stop_propagation() {}, spawn: (f) => f(cx), focus_handle: () => ({ focus() {}, is_focused: () => false }), timer: { every() {}, after: (_ms, f) => (f(cx), { cancel() {} }) } };
@@ -117,7 +93,7 @@ const load = (props = {}, setup = record) => {
   const counted = ["review-changes", "review-open", "review-ahead", "review-behind"];
   assert.deepEqual(counted.map(colorOf), counted.map(() => theme.dim));
   for (const id of counted) assert.ok(find(bar.render(), id).style.font_medium !== undefined && !find(bar.render(), id).items.flatMap(walk).some(n => n.style.text_color || n.style.font_medium !== undefined), `${id}: the shared button sets the weight, nothing inside sets its own color or weight`);
-  for (const id of counted) assert.deepEqual(plain(find(bar.render(), id).hoverStyle), { bg: theme.hover }, id);
+  for (const id of counted) assert.deepEqual(plain(find(bar.render(), id).hoverStyle), { bg: theme.foreground + "0a" }, `${id}: hovered, the text color at 4%`);
   fire(find(drawn, "review-open"), "on_hover", true, cx);
   assert.equal(colorOf("review-open"), theme.foreground, "hovered, lit");
   assert.equal(colorOf("review-changes"), theme.dim, "only the one hovered");
@@ -306,7 +282,6 @@ const load = (props = {}, setup = record) => {
   assert.deepEqual([spec.mod, spec.props.menu], ["pulls-review", "review"]);
   // The Review page reads git itself for its scope menu (shared/review-git.js): the bar takes no command from it.
   assert.equal(commands.length, 0, "no copy waits on a command");
-  assert.ok(!fs.readFileSync(path.join(__dirname, "bar.js"), "utf8").includes("async function readReview"), "the reads are review-git.js's, one source for both mods");
   assert.deepEqual([spec.at.x / zoom, spec.at.y / zoom].map(v => Math.round(v * 1000) / 1000), [890 + 24 - 368, 36], "4 under the button, right edges together, wherever the press was");
   fire(find(bar.render(), "review-open"), "on_click", {}, cx);
   assert.deepEqual(launched.at(-1), { root: "/repo", args: [], page: "/branch/feat", analyze: true }, "a count's click opens its page, known without git, and starts the analysis");
@@ -324,7 +299,8 @@ const load = (props = {}, setup = record) => {
   // The space's review lights the count of the diff it shows, whichever of its commits it's on.
   const pane = (page, base = "/branch/feat", space = "s") => { state["review.shown"] = { [space]: { root: "/repo", page, base } }; };
   // The diff shown: lit, foreground on the hover's fill.
-  const isLit = (id) => find(bar.render(), id).style.bg === theme.selected && find(bar.render(), id).style.text_color === theme.foreground;
+  // On: the text color at 7% (shared button.js), as every ghost on chrome.
+  const isLit = (id) => find(bar.render(), id).style.bg === theme.foreground + "12" && find(bar.render(), id).style.text_color === theme.foreground;
   pane("/branch/feat"); show(r);
   let lit = bar.render();
   assert.ok(isLit("review-open"));
@@ -348,6 +324,15 @@ const load = (props = {}, setup = record) => {
   assert.ok(!isLit("review-open"), "a commit opened as its own diff lights no count");
   pane("/branch/feat"); state["review.shown"].s.root = "/other";
   assert.ok(!isLit("review-open"), "another repository's diff lights nothing");
+  // In Herdr T3's panel, what the Review tab now open showed: one closed since (another `born`) lights nothing.
+  const layout = scope.layout;
+  scope.layout = () => ({ id: "root", children: [{ id: "panel", children: [{ id: "panel-body", active: "review", children: [{ id: "files" }, { id: "review" }, { id: "panel-empty" }] }] }] });
+  state["t3.panels"] = { s: { tabs: [{ id: "review", born: 9 }], active: "review", open: true } };
+  pane("/branch/feat"); state["review.shown"].s.born = 8;
+  assert.ok(!isLit("review-open"), "a closed Review tab's diff lights nothing");
+  state["review.shown"].s.born = 9;
+  assert.ok(isLit("review-open"), "the open one's does");
+  scope.layout = layout; delete state["t3.panels"];
   // The logo's menu picks what to review, whatever the review shows: the log and the branches, both on their own page.
   pane("/commit/c2");
   gits.length = 0;
@@ -364,7 +349,7 @@ const load = (props = {}, setup = record) => {
   assert.deepEqual(ids, ["review-commit-c3", "review-commit-c2", "review-commit-c1"]);
   assert.deepEqual(strings(find(inMenu.render(), "review-menu")).filter(text => /^(Commits|Branches|\d+|on feat)$/.test(text)), ["Commits", "3", "Branches", "1", "on feat"],
     "the switch counts each page, and says what the page shown lists");
-  // The highlight as the Actions and New menus': `selected`, on the top row first, moved by ↑/↓ (round) and by the pointer.
+  // The highlight as every menu's (menu-row.js): `selected`, on the top row first, moved by ↑/↓ (round) and by the pointer.
   const highlighted = () => ids.filter(id => find(inMenu.render(), id)?.style.bg === theme.selected);
   assert.deepEqual(highlighted(), ["review-commit-c3"]);
   const key = (k) => fire(find(inMenu.render(), "review-menu"), "on_key_down", { key: k }, cx);
@@ -376,7 +361,6 @@ const load = (props = {}, setup = record) => {
   assert.deepEqual(highlighted(), ["review-commit-c1"], "up from the top goes round to the bottom");
   fire(find(inMenu.render(), "review-commit-c3"), "on_hover", true, cx);
   assert.deepEqual(highlighted(), ["review-commit-c3"], "the pointer moves it too");
-  assert.equal(find(inMenu.render(), "review-commit-c2").hoverStyle.bg, theme.foreground + "0a", "the rest lift faintly under the pointer");
   fire(find(inMenu.render(), "review-commit-c1"), "on_click", {}, cx);
   assert.deepEqual(launched.at(-1), { root: "/repo", args: ["c1"], page: "/commit/c1" }, "a pick opens it as its own diff, unanalyzed");
   // Tab turns to the branches' page, and back.
@@ -592,36 +576,13 @@ const load = (props = {}, setup = record) => {
   assert.deepEqual([plain(calls), state.review], [[], undefined], "started in one space, nothing done in another");
   opener.readTextFile = env.readTextFile; opener.spaces = env.spaces;
 
-  // In Herdr T3 (`toggle` in its props) the bar is the panel's toggle alone: no counts, so no git reads; the panel's scope menu
-  // has them. The logo is the panel's Review tab.
+  // Herdr T3 owns its layout controls; an older installed Review bar collapses to nothing, without Git reads.
   const { mod: merged, scope: mergedScope } = load({ block: "review-bar", toggle: true });
   const joined = merged.render();
-  assert.deepEqual(keys(find(joined, "pulls-review")), ["tip-review-panel"]);
+  assert.equal(find(joined, "pulls-review"), null);
   assert.equal(merged.reviews, undefined, "nothing reads git for counts it doesn't show");
   assert.ok(!walk(joined).some(n => n.kind === "image"), "no logo in the bar");
-  // A 24 ghost icon button, as t3-tabs' panel-toggle: no outline, the fill only on hover.
-  const toggleOf = () => find(merged.render(), "review-panel");
-  assert.deepEqual([toggleOf().style.w, toggleOf().style.h, toggleOf().style.rounded, "border" in toggleOf().style, "bg" in toggleOf().style, toggleOf().hoverStyle.bg], [24, 24, 8, false, false, theme.hover]);
-  assert.equal(walk(toggleOf()).find(n => n.kind === "svg").source, "mods/pulls-review/icons/panel-right.svg");
-  assert.equal(toggleOf().items.length, 1, "no analysis, the icon alone");
-  // Last on the bar, 2 in as the ghost buttons after it; the tab bar's end makes up the rest, so its box ends 12 from the window's edge.
-  assert.equal(find(joined, "review-fit").style.pr, 2, "2 in, as the bar's other ghost buttons");
-  // While the panel is closed the analysis's mark sits inside the button, left of the icon: the button grows leftward, its
-  // icon staying put at the bar's end. Never a badge over the icon. Open, the panel head's Review tab shows it: not twice.
-  for (const [word, label] of [["working", "running"], ["done", "done"], ["blocked", "failed"]]) {
-    state["review.status"] = { s: word };
-    const [first, second] = toggleOf().items;
-    assert.ok(toggleOf().items.length === 2 && second.source === "mods/pulls-review/icons/panel-right.svg" && first.source !== second.source && toggleOf().style.px === 8 && toggleOf().style.gap === 4 && toggleOf().style.w === undefined, word);
-    assert.ok(!walk(toggleOf()).some(n => n.style?.absolute !== undefined), `${word}: in the flow, not a badge`);
-    assert.equal(toggleOf().style.accessibility_label, `Show panel, analysis ${label}`);
-  }
-  mergedScope.layout = () => ({ id: "root", children: [{ id: "work" }, { id: "panel", children: [{ id: "panel-body", active: "review", children: [{ id: "files" }, { id: "review" }] }] }] });
-  assert.deepEqual([toggleOf().items.length, toggleOf().style.w, toggleOf().style.accessibility_label, toggleOf().style.text_color], [1, 24, "Hide panel", theme.foreground], "open: the Review tab has the mark, the button its icon, lit");
-  mergedScope.layout = env.layout;
-  delete state["review.status"];
-  calls.length = 0;
-  fire(find(joined, "review-panel"), "on_click", {}, cx);
-  assert.deepEqual(plain(calls), [["layout.select", { stack: "panel-body", child: "files" }], ["layout.show", { id: "panel" }]], "it opens the panel on its page");
+  assert.equal(find(joined, "review-panel"), null);
 
   // The panel's review page starts only when first shown and shared outlives the app, so a run's word from before a restart
   // would spin on in the bar and the panel head. The bar, always shown, drops it; only the bar: an overlay opens with every menu.
@@ -633,9 +594,29 @@ const load = (props = {}, setup = record) => {
   const kept = state["review.status"]; load({ block: "review" });
   assert.equal(state["review.status"], kept, "nothing to drop, nothing written: every write redraws every mod");
 
+  // The logo's menu, opened from the bar (P6): its button stays on while the menu is up, and its label stays down.
+  {
+    const { mod: bar, scope } = load({ block: "review" });
+    const r = { root: "/repo", branch: "feat", base: "main", changed: 0, ahead: 0, behind: 0, unmerged: 0 };
+    bar.reviews.set(JSON.stringify(scope.reviewLocation()), r);
+    scope.exec = async (_cmd, args) => ({ code: 0, stdout: args.includes("log") ? ["abc123", "test commit", "1", "Tester"].join(String.fromCharCode(31)) + "\n" : "" });
+    let reading;
+    const run = { ...cx, spawn: (fn) => { reading = fn(run); } };
+    const button = () => find(bar.render(), "review-pick");
+    assert.equal(button().style.bg, undefined, "closed: no on fill");
+    fire(button(), "on_mouse_down:left", { bounds: { x: 300, y: 10, width: 24, height: 24 } }, run);
+    fire(button(), "on_click", {}, run); await reading;
+    const spec = overlays.at(-1);
+    assert.equal(spec.props.menu, "review", "git read, then the menu opens");
+    assert.equal(button().style.bg, theme.foreground + "12", "its button on while the menu is up: chrome's 7%");
+    fire(button(), "on_hover", true, run);
+    fire(find(bar.render(), "tip-over-review-pick"), "on_hover", true, run);
+    assert.deepEqual(strings(find(bar.render(), "tip-review-pick").style.content), [], "its label stays down while the menu is up");
+  }
+
   // Every icon on disk is drawn: what a change orphans goes with it.
   const code = ["bar.js", "details.js", "tip.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n");
   for (const file of fs.readdirSync(path.join(__dirname, "icons"))) assert.ok(code.includes(path.basename(file, ".svg")), `${file} is used`);
 
-  console.log("ok: the Review bar's counts quiet ghost buttons, lit hovered or shown, its block sized to fit, the branch menu and its search, opening a review on the panel's review page, the space's analysis marked by the logo, in Herdr T3 the panel's toggle alone, no counts and no git reads, the analysis's mark left of its icon while the panel's closed, the git reads shared with the Review page");
+  console.log("ok: standalone Review counts/menu/analysis, native panel opening and shared Git reads; Herdr T3's retired toggle bar collapses without duplicate controls");
 })().catch(e => { console.error(e); process.exit(1); });

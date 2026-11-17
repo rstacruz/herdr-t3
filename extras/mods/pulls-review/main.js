@@ -6,9 +6,10 @@
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { props, run, settings, setShared, shared, theme } from "herdr";
-import { watchReview, reviewBar, reviewMenu, initReviewMenu, menuClosed } from "./bar.js";
+import { watchReview, stopReview, reviewBar, reviewMenu, initReviewMenu, menuClosed } from "./bar.js";
 import { launch } from "./open.js";
 import { stopsInit, stopsEnd, focusRoot } from "./focus.js";
+import { REVIEW_STATUS } from "./panel.js";
 
 export default class PullsReview extends View {
   init(_props, cx) {
@@ -18,8 +19,8 @@ export default class PullsReview extends View {
     else {
       // The panel's review page starts only when first shown and shared outlives the app, so a run's word from before a restart
       // would stay until that page is seen. The bar, always shown, drops it; a review still running says so again at its next poll (1.5s).
-      const status = Object.entries(shared("review.status") ?? {}), left = status.filter(([, word]) => word !== "working");
-      if (left.length < status.length) setShared("review.status", Object.fromEntries(left));
+      const status = Object.entries(shared(REVIEW_STATUS) ?? {}), left = status.filter(([, word]) => word !== "working");
+      if (left.length < status.length) setShared(REVIEW_STATUS, Object.fromEntries(left));
       // Herdr T3's bar is the panel's toggle alone: no counts to read git for.
       if (!p.toggle) watchReview(this, cx);
       stopsInit(this, cx);
@@ -27,6 +28,7 @@ export default class PullsReview extends View {
   }
 
   close() {
+    stopReview(this);
     stopsEnd(this);
     if (/** @type {any} */ (this).search) menuClosed();
   }
@@ -46,7 +48,8 @@ export default class PullsReview extends View {
   // With the block's id in props.block, it sizes that block to the bar: layout.resize, which Herdr keeps with the
   // layout's clicks. on_size_change reports zoomed pixels; a layout's are logical.
   fit(size) {
-    const id = props()?.block, px = Math.ceil(size.width / (Number(settings()?.zoom) || 1));
+    // The window snaps a zoomed width to whole pixels: up to half a px over its logical width isn't more room needed.
+    const id = props()?.block, px = Math.ceil(size.width / (Number(settings()?.zoom) || 1) - 0.5);
     if (!id || px === this.fitted) return;
     this.fitted = px;
     run("layout.resize", { id, px });

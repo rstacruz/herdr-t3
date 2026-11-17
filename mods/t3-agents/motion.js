@@ -66,11 +66,12 @@ export function flying(view, key, child) {
 }
 
 // The rows that left, for a relative() parent the rows fill: inert where they were, fading out. A row gone with too much of its state just goes.
-export function leavingRows(view) {
+// `shift`: how far the parent's rows are scrolled up, when it places them itself (a windowed list).
+export function leavingRows(view, shift = 0) {
   const away = view.motion.leaving;
   return view.motion.exits.filter((x) => x.ghost).flatMap((x) => {
     try {
-      return [div().id(`leaving-${x.key}-${view.motion.step}`).absolute().left(0).right(0).top(x.y + (away ? x.travel : 0))
+      return [div().id(`leaving-${x.key}-${view.motion.step}`).absolute().left(0).right(0).top(x.y - shift + (away ? x.travel : 0))
         .opacity(away ? 0 : 1).transition("top", MOTION).transition("opacity", MOTION).child(x.ghost())];
     } catch { return []; }
   });

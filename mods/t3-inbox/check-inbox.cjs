@@ -4,42 +4,11 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { test } = require("node:test");
 
-// A mod as Herdr would load it, all in one scope: what main.js imports from its own folder, each file once and before what needs it.
-function bundle(dir, file = "main.js", seen = new Set()) {
-  if (seen.has(file)) return "";
-  seen.add(file);
-  const src = fs.readFileSync(path.join(dir, file), "utf8");
-  // Keep the helper's private tint separate from project.js's exported tint.
-  if (file === "button.js") return "const { button, radiusOf } = (() => {\n" + src.replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "") + "\nreturn { button, radiusOf }; })();";
-  const needs = [...src.matchAll(/^import [^;]*? from "\.\/(.+?)";/gm)].map((m) => bundle(dir, m[1], seen)).join("\n");
-  return needs + "\n" + src.replace(/^import [^;]*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ").replace("export default class", "globalThis.Mod = class");
-}
-
-function element() {
-  const node = { key: null, items: [], handlers: {}, style: {} };
-  const proxy = new Proxy(node, { get(target, key) {
-    if (key in target) return target[key];
-    return (...args) => {
-      if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (["child", "content", "trigger"].includes(key)) node.items.push(args[0]);
-      else if (key === "children") node.items.push(...args[0]);
-      else if (key === "id") node.key = args[0];
-      else if (key === "on_mouse_down" || key === "on_mouse_up") node.handlers[`${key}:${args[0]}`] = args[1];
-      else if (key === "on_action") node.handlers[`on_action:${args[0]}`] = args[1];
-      else if (key.startsWith("on_")) node.handlers[key] = args[0];
-      else node.style[key] = args;
-      return proxy;
-    };
-  } });
-  return proxy;
-}
-
-function find(node, id) {
-  if (!node || typeof node !== "object") return null;
-  if (node.key === id) return node;
-  for (const child of node.items) { const hit = find(child, id); if (hit) return hit; }
-  return null;
-}
+const kit = require("./check-kit.js");
+const element = kit.elements({ args: "all" }), { find } = kit;
+// A mod as Herdr would load it (kit.bundle), button.js's private tint kept apart from project.js's exported one.
+const bundle = (dir, file = "main.js", seen = new Set()) => kit.bundle((name) => fs.readFileSync(path.join(dir, name), "utf8"), file,
+  (name, src) => name === "button.js" ? "const { button, radiusOf } = (() => {\n" + kit.strip(src) + "\nreturn { button, radiusOf }; })();" : null, seen);
 
 function slims(node, out = []) {
   if (!node || typeof node !== "object") return out;
@@ -55,10 +24,7 @@ function cards(node, out = []) {
   return out;
 }
 
-function texts(node) {
-  if (typeof node === "string") return [node];
-  return node && typeof node === "object" ? node.items.flatMap(texts) : [];
-}
+const texts = kit.strings;
 
 // Whether a spinner turns anywhere in it: a working row's corner.
 function spinning(node) {
@@ -104,6 +70,7 @@ function fixture() {
     },
   };
   const env = {
+    checking: () => false,
     window: Object.assign(() => ({ platform: "macos", active: f.active }), { mouse_position: () => f.pointer, viewport_size: () => ({ width: 1200, height: 800 }) }), View: class {}, div: element, image: (src) => { const e = element(); e.style.image = [src]; return e; }, svg: element, v_flex: element, h_flex: element,
     Popover: { new: (id) => element().id(id) }, HoverCard: { new: (id) => element().id(id) }, Popup: { new: (id, trigger) => element().id(id).child(trigger) }, Select: { new: (id) => element().id(id) }, Input: { new: element }, NumberInput: { new: element }, Button: { new: element },
     InputState: { new: (o = {}) => {
@@ -115,7 +82,8 @@ function fixture() {
     programOf: (x) => x.mod ? f.state[`${x.mod}.program`] ?? null : x.program,
     modStatus: (x) => f.state[`${x.mod}.status`]?.[x.tab] ?? null,
     localStorage: { getItem: (k) => f.data.get(k) ?? null, setItem: (k, v) => f.data.set(k, v), removeItem: (k) => f.data.delete(k) },
-    keys: () => [], agents: () => f.rows, terminals: () => f.terms, panes: () => [],
+    keys: () => [], agents: () => f.rows, terminals: () => [...f.terms], // a new list each call, as Herdr gives (tree.js indexes each list once)
+    panes: () => [],
     spaces: () => [{ id: "s1", name: "One", tabs: [] }, { id: "s2", name: "Two", tabs: [] }], machines: () => [],
     focused: () => ({ agent: f.rows.find((a) => a.focused)?.address }),
     theme: () => ({}), settings: () => ({}), props: () => ({}),
@@ -709,7 +677,7 @@ test("the top tools and scope trigger use shared chrome button sizes and on stat
   }
   f.context.theme = () => ({ foreground: "#eeeeee", selected: "#333333" });
   f.mod.scopeOpen = true; f.render();
-  assert.equal(find(f.tree, "inbox-scope").style.bg[0], "#333333", "the open scope is pressed");
+  assert.equal(find(f.tree, "inbox-scope").style.bg[0], "#eeeeee12", "the open scope is pressed: the text color at 7%, not the theme's selected");
 });
 
 test("the space filter's menu measures as T3's, its search text inside the button's left edge", () => {
@@ -782,24 +750,20 @@ test("snooze menu, Custom's units: Home, End and typing move the same highlight"
   assert.equal(find(f.tree, `snooze-${f.mod.napAt}-A`).style.accessibility_label[0], "Custom…");
 });
 
-test("a plain click on Settle leaves no sweep behind to swallow the next click", () => {
-  const f = fixture(), a = f.add("A", "idle", 100); f.add("B", "idle", 50); f.add("C", "idle", 30); a.focused = true;
-  f.render(); f.mod.hovered = "A"; f.render();
-  f.event("settle-A", "on_mouse_down:left");
-  // The button's click stops its release there: the sidebar's own mouse-up never comes.
-  f.event("settle-A", "on_click"); f.render(1100);
-  f.event("t3-inbox-root", "on_mouse_move", { position: { x: 20, y: 300 } });
-  assert.equal(f.keys, undefined, "the sidebar doesn't take the keyboard");
+test("a plain click on a settled row's undo or on Settle leaves no sweep behind to swallow the next click", () => {
+  let f;
+  for (const [id, made] of [["unsettle-A", (f) => { f.add("A"); f.terms[0].labels.settled = "500:0"; f.mod.open = true; }],
+    ["settle-A", (f) => { const a = f.add("A", "idle", 100); f.add("B", "idle", 50); f.add("C", "idle", 30); a.focused = true; }]]) {
+    f = fixture(); made(f);
+    f.render(); f.mod.hovered = "A"; f.render();
+    f.event(id, "on_mouse_down:left");
+    // The button's click stops its release there: the sidebar's own mouse-up never comes.
+    f.event(id, "on_click"); f.render(1100);
+    f.event("t3-inbox-root", "on_mouse_move", { position: { x: 20, y: 300 } });
+    assert.equal(f.keys, undefined, `${id}: the sidebar doesn't take the keyboard`); assert.equal(f.mod.sweep, null, id);
+  }
   f.event("card-C", "on_click");
   assert.deepEqual([f.calls.at(-1)[0], f.calls.at(-1)[1].terminal], ["agent.focus", "C"], "the next click opens the card at once");
-});
-
-test("a plain click on a settled row's undo leaves no sweep behind either", () => {
-  const f = fixture(); f.add("A"); f.terms[0].labels.settled = "500:0"; f.mod.open = true;
-  f.render(); f.mod.hovered = "A"; f.render();
-  f.event("unsettle-A", "on_mouse_down:left"); f.event("unsettle-A", "on_click"); f.render(1100);
-  f.event("t3-inbox-root", "on_mouse_move", { position: { x: 20, y: 300 } });
-  assert.equal(f.keys, undefined); assert.equal(f.mod.sweep, null);
 });
 
 test("a title is bright when it's in view, needs you or is done; hover brightens without changing its weight", () => {
@@ -1007,7 +971,7 @@ test("settling shows T3's undo notice over the first shelf for 5s; Undo puts the
   assert.equal(note().style.opacity[0], 1);
   assert.ok(find(find(f.tree, "shelves"), "undo-notice-undo"), "over the first shelf's header, as T3 hosts it");
   const undo = find(f.tree, "undo-notice-undo");
-  assert.ok("font_medium" in undo.style && "hover" in undo.style, "as T3's InlineButton: medium, underlined on hover");
+  assert.ok("font_medium" in undo.style && "underline" in undo.hoverStyle, "as T3's InlineButton: medium, underlined on hover");
   // A second settle soon after joins the same notice.
   f.rows.find((x) => x.address === "B").focused = true; a.focused = false; f.settle(); f.render(2000);
   assert.equal(texts(note())[0], "Settled 2 agents,");
@@ -1101,7 +1065,7 @@ test("a mod pane in view beside an agent, a review split off it, lights that age
 });
 
 const REVIEW = "card-pane:pm";
-const plain = (x) => JSON.parse(JSON.stringify(x));
+const { plain } = kit;
 
 test("a review in a tab with no agent is a card, at the top of Active when it opens", () => {
   const f = fixture(); f.add("A", "idle", 300); f.review(); f.render();
@@ -1874,12 +1838,16 @@ test("a sweep from a pinned card's Settle stays among the pins", async () => {
   assert.deepEqual(f.labelled.map((l) => l.split("=")[0]), ["label P settled", "label Q settled"]);
 });
 
-test("the snooze menu lights nothing until the pointer or a key gets there, and a pick needs a lit row", () => {
+test("the snooze menu, opened by the pointer, lights nothing until the pointer or a key gets there; by keys, its first row", () => {
   const f = fixture(); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
-  f.event("snooze-menu-A", "on_open_change", true); f.render();
   const lit = () => find(f.tree, "snooze-panel-A").items.filter((r) => r.key).findIndex((r) => r.style.bg);
+  f.event("snooze-menu-A", "on_open_change", true); f.render();
+  assert.equal(lit(), 0, "opened by keys (no press on its button): the first row lit");
+  f.event("snooze-menu-A", "on_open_change", false); f.render(); f.mod.hovered = "A"; f.render();
+  f.event("snooze-A", "on_mouse_down:left", { bounds: { x: 0, y: 0, width: 20, height: 20 } });
+  f.event("snooze-menu-A", "on_open_change", true); f.render();
   const rows = find(f.tree, "snooze-panel-A").items.filter((r) => r.key).length;
-  assert.equal(lit(), -1);
+  assert.equal(lit(), -1, "by the pointer: nothing lit");
   f.event("snooze-panel-A", "on_action:t3_inbox_snooze_pick"); f.flush();
   assert.deepEqual([f.labelled, f.mod.napMenu], [[], "A"], "Enter on nothing does nothing");
   f.event("snooze-panel-A", "on_key_down", { key: "up" }); f.render();
@@ -1974,9 +1942,7 @@ test("the Custom dialog's calendar lets days gone by be seen but not picked, and
   assert.ok(texts(find(tree, "custom-calendar")).includes("November 2026"));
   assert.deepEqual([find(tree, "month-on").style.h[0], find(tree, "month-on").style.w[0]], [32, 32]);
   assert.equal(find(tree, "custom-submit").style.border_1, undefined, "the primary button has no border");
-  const hover = element();
-  find(tree, "custom-cancel").style.hover[0](hover);
-  assert.equal(hover.style.opacity[0], 0.9);
+  assert.equal(find(tree, "custom-cancel").hoverStyle.opacity[0], 0.9);
   find(tree, "day-2026-11-20").handlers.on_click({}, f.cx);
   assert.deepEqual([d.date.getDate(), d.calendarOpen], [20, false]);
   d.calendarOpen = true; tree = d.render(f.cx);
@@ -2223,10 +2189,8 @@ test("past 40 rows coming and going at once, they just show", () => {
 test("a card and a settled row measure as T3's, and the lists stack as its does", () => {
   const f = fixture(); f.add("A", "idle", 100); f.add("B", "idle", 200); f.terms[1].labels.settled = "500:0"; f.mod.open = true; f.render();
   const num = (n, k) => n.style[k]?.[0], card = find(f.tree, "card-A");
-  assert.deepEqual(["px", "py", "rounded"].map((k) => num(card, k)), [10, 8, 6]);
   assert.deepEqual([num(card.items[0], "h"), num(card.items[1], "h"), num(card.items[1], "mt")], [20, 20, 4], "its lines, 4 apart");
   const slim = find(f.tree, "slim-B");
-  assert.deepEqual(["h", "px", "gap", "rounded"].map((k) => num(slim, k)), [36, 10, 10, 6]);
   assert.deepEqual(["h", "min_w"].map((k) => num(find(slim, "slim-corner-B"), k)), [24, 32], "T3's corner");
   assert.equal(num(find(f.tree, "settled"), "gap"), 1, "gap-px between a shelf's rows");
   assert.deepEqual(["h", "px", "gap"].map((k) => num(find(f.tree, "inbox-top"), k)), [32, 8, 4], "the search field alone, its middle on the pane headers'");

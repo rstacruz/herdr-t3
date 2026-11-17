@@ -5,7 +5,8 @@ import { h_flex, v_flex, Select, Popup } from "gpui-base";
 import { theme, props, closeOverlay, run, shared, setShared, appHome, readTextFile, exec } from "herdr";
 import { SETTINGS, t3Settings } from "./layout-settings.js";
 import { stopsInit, stop, focusRoot } from "./focus.js";
-import { menuJump } from "./list.js";
+import { menuKeys, openLit } from "./list.js";
+import { menuRow } from "./menu-row.js";
 
 const SECTIONS = [{ id: "home", title: "Home", icon: "mods/t3-chrome/icons/house.svg" }];
 const ROWS = [
@@ -57,7 +58,8 @@ export function settingsView(view) {
   const menu = (r) => {
     const options = r.options(view), id = `st-${r.key}`, label = options.find(([v]) => v === now[r.key])?.[1] ?? now[r.key];
     const { focus, keys } = view.pick[r.key], open = view.picking === r.key;
-    const show = (on) => { view.picking = on ? r.key : null; view.pickAt = -1; };
+    // Opened by keys (Enter or Space on the button: no press), its first row lit; by the pointer, none (list.js openLit).
+    const show = (on, keys = false) => { view.picking = on ? r.key : null; view.pickAt = openLit(on && keys); };
     const choose = (value) => {
       show(false);
       focus.focus();
@@ -66,8 +68,10 @@ export function settingsView(view) {
     const trigger = stop(view, t, id, h_flex().id(id).w_full().h(32).px(11).gap(8).rounded(8).border_1().border_color(t.border).bg(t.raised).items_center().cursor_pointer()
       .hover((s) => s.bg(t.hover)).on_hover((on) => { view.overPick = on ? r.key : null; })
       .role("button").accessibility_label(`${r.title}: ${label}`)
+      .on_mouse_down("left", () => { view.pickPress = true; })
       .on_click((_e, cx) => {
-        show(!open);
+        show(!open, !view.pickPress);
+        view.pickPress = false;
         (open ? focus : keys).focus();
         cx.notify();
       })
@@ -77,25 +81,11 @@ export function settingsView(view) {
       .track_focus(keys)
       // The trigger's own click toggles, so a press on it isn't "elsewhere".
       .on_mouse_down_out((_e, cx) => { if (view.overPick !== r.key) { show(false); cx.notify(); } })
-      .on_key_down((e, cx) => {
-        if (e.key === "enter" || e.key === "space") { if (view.pickAt >= 0) choose(options[view.pickAt][0]); }
-        // Here, before the dialog's own Esc, which would close it.
-        else if (e.key === "escape") { show(false); focus.focus(); }
-        else {
-          const to = menuJump(view, e, options.map(([, l]) => l), view.pickAt);
-          if (to < 0) return;
-          view.pickAt = to;
-        }
-        cx.stop_propagation();
-        cx.notify();
-      })
-      .children(options.map(([value, name], i) => h_flex().id(`${id}-${value ?? "terminal"}`).h(28).px(8).gap(8).rounded(4).items_center().text_color(t.foreground)
-        .when(i === view.pickAt, (el) => el.bg(t.selected))
-        .on_hover((over, cx) => { if (over && view.pickAt !== i) { view.pickAt = i; cx.notify(); } })
-        .role("list_box_option").aria_selected(value === now[r.key]).accessibility_label(name)
-        .on_click((_e, cx) => { choose(value); cx.notify(); })
-        .child(div().flex_1().min_w(0).truncate().child(name))
-        .when(value === now[r.key], (el) => el.child(svg("mods/t3-chrome/icons/check.svg").size(14).flex_none().text_color(t.foreground)))));
+      // Its Esc here, before the dialog's own, which would close it.
+      .on_key_down(menuKeys(view, options.map(([, l]) => l), (at) => choose(options[at][0]), { at: "pickAt", close: () => { show(false); focus.focus(); } }))
+      .children(options.map(([value, name], i) => menuRow(view, t, `${id}-${value ?? "terminal"}`, { at: [view, "pickAt", i], label: name,
+        trail: value === now[r.key] ? svg("mods/t3-chrome/icons/check.svg").size(14).flex_none().text_color(t.foreground) : null, pick: (cx) => { choose(value); cx.notify(); } })
+        .role("list_box_option").aria_selected(value === now[r.key])));
     return Select.new(id).w(220).flex_none().accessibility_label(r.title).open(open).track_focus(focus).content_focus_handle(keys)
       .on_open_change((on, cx) => { show(on); cx.notify(); })
       .child(Popup.new(`${id}-popup`, trigger).w_full().when(open, (el) => el.content(list)));

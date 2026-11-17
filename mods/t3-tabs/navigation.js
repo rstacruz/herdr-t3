@@ -1,6 +1,6 @@
 import { spaces, panes, agents, terminals, machines, run, openOverlay, closeOverlay, focused, hc, notify, layout, shared, setShared, home, window } from "herdr";
 import { namer, programOf } from "./name.js";
-import { descendants, kidStatus, ownStatus, snoozeOf, treeStatus } from "./tree.js";
+import { descendants, ownStatus, snoozeOf, subAgents, treeStatus } from "./tree.js";
 import { focusAgent, focusPane } from "./zoom.js";
 import { sidebarParts } from "./sidebar.js";
 import { newTab } from "./project.js";
@@ -10,7 +10,7 @@ import { writeLabel } from "./labels.js";
 
 // One instance per Tabs view; the Herdr operations also admit the check's fake core.
 export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agents, terminals, machines: () => machines(), run, openOverlay, closeOverlay, focused, hc, notify, layout, shared, setShared, home: () => home(), window: () => window(), namer, programOf, focusAgent, focusPane, writeLabel }) {
-  const { spaces, panes, agents, terminals, machines, run, openOverlay, closeOverlay, focused, hc, notify, layout, shared, setShared, home, window, namer, programOf, focusAgent, focusPane, writeLabel } = core;
+  const { spaces, panes, agents, terminals, machines, run, openOverlay, closeOverlay, focused, hc, layout, shared, setShared, home, window, namer, programOf, focusAgent, focusPane, writeLabel } = core;
   // lastIn: each tab's agent last in view, which the Inbox's bar holds while a program there has the focus.
   // fresh: spaces where the person started something new (the breadcrumb's space, cmd-t) since last looking at an agent there.
   const trail = {}, lastIn = {}, fresh = new Set(), owed = new Map(), waking = new Map();
@@ -62,7 +62,7 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
     const here = machines().find(m => m.name === null);
     if (here && here.layout !== "ready") return;
     knowHome();
-    if (spaces().some(s => s.id === homeId())) return refitHome(true, cx);
+    if (spaces().some(s => s.id === homeId())) return refitHome(true);
     const before = new Set(spaces().map(s => s.id));
     run("space.new", { name: HOME_NAME, machine: "", folder: home() });
     const made = await seen(cx, () => spaces().find(s => !before.has(s.id) && s.name === HOME_NAME));
@@ -156,7 +156,7 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
   // Home is one thing alone (docs/adr/0005): its own tab, a lone pane that is the setting's mod or, set so, a shell. Another mod
   // there, or an idle shell when a mod is wanted, gives way to it; a shell busy with something else keeps its tab, and Home
   // gets a new one.
-  async function refitHome(go, cx) {
+  async function refitHome(go) {
     const homeTabs = () => spaces().find(s => s.id === homeId())?.tabs.map(c => c.id) ?? [];
     const ps = panes(), mine = ps.filter(p => homeTabs().includes(p.tab));
     // panes() hasn't caught up with Home yet: showing it is all there is to do.
@@ -339,8 +339,8 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
   // Snoozed through a need (`:held`), a failure was the person's to put off; once the need is over the mark goes.
   function endSnoozes(terms, every) {
     const was = states, active = window()?.active, now = Date.now();
-    const listed = new Map(every.map(a => [a.address, a.status]));
-    const state = (a) => treeStatus(ownStatus(a.status, a.address, terms), descendants(terms, a.address).map(k => kidStatus(k, listed)));
+    const under = subAgents(every, terms);
+    const state = (a) => treeStatus(ownStatus(a.status, a.address, terms), under(a.address));
     states = new Map(every.map(a => [a.address, state(a)]));
     const viewed = inViewAgent(terms, every);
     for (const a of every) {
@@ -421,7 +421,7 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
     return [...(lead ? [lead] : []), ...kin, ...space.tabs.filter(c => !every.some(a => a.tab === c.id))];
   }
 
-  // The Inbox's bar as it draws: who's in view (docs/research/inbox-tab-bar-plan.md), then its family's other tabs and the
+  // The Inbox's bar as it draws: who's in view (docs/internals/specs/tab-bar.md), then its family's other tabs and the
   // space's programs. The tab in view and the parent's are in the breadcrumb, so not again among them.
   function context(w, tabs) {
     if (!w || !inboxShown()) return null;
@@ -455,7 +455,7 @@ export function navigation(beforeAsk = (_cx) => {}, core = { spaces, panes, agen
       else if (command.startsWith("close-tab-now:")) await closeTabNow(command.slice("close-tab-now:".length), { confirmed: true }, cx);
       else if (command.startsWith("close-pane-now:")) await closePaneNow(command.slice("close-pane-now:".length), cx);
       else if (command === "home") await goHome(cx);
-      else if (command === "home-mod") await refitHome(false, cx);
+      else if (command === "home-mod") await refitHome(false);
       // As Herdr's own Settings, a dialog; pressed again, it replaces the open one (closing one already gone does nothing).
       else if (command === "settings") {
         if (settingsOpen) closeOverlay(settingsOpen);

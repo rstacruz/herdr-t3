@@ -24,16 +24,24 @@ function el() {
 const find = (node, id) => !node || typeof node !== "object" ? null : node.key === id ? node : node.items.map((c) => find(c, id)).find(Boolean) ?? null;
 const theme = { selected: "#selected", hover: "#hover", foreground: "#fg", ansi1: "#red" };
 let target = {}, calls = [], closed = [], state = {}, list = "inbox", opened = 0, zoom = 1, view = { width: 1200, height: 800 }, mouse = { x: 0, y: 0 };
-let terms = [{ address: "t1", labels: {} }], agentList = [];
+let terms = [{ address: "t1", labels: {} }], agentList = [], keyList = [];
+// tip.js's keyLabel, as on a Mac: what every key hint in the layout is written with.
+const tipScope = vm.createContext({ window: () => ({ platform: "macos" }), keys: () => keyList });
+vm.runInContext(fs.readFileSync(path.join(__dirname, "tip.js"), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "") + "\nglobalThis.keyLabel = keyLabel;", tipScope);
+// closeOverlay runs what a closed t3-menu's close() does with the registry (popup-menu.js menuClosed), as Herdr calls close().
 const context = vm.createContext({
+  checking: () => false,
+  // menu-row.js's: button.js's and tip.js's (no row here is disabled).
+  DISABLED: 0.64, glow: () => () => {}, tip: (_v, _t, _id, _label, el) => el,
   View: class {}, div: el, svg: (path) => { const n = el(); n.style.path = path; return n; }, v_flex: el, h_flex: el,
-  run: (name, args) => calls.push(args === undefined ? [name] : [name, args]), props: () => target, closeOverlay: (id) => { closed.push(id); }, openOverlay: (spec) => { calls.push(["overlay", spec]); return `o${++opened}`; },
+  run: (name, args) => calls.push(args === undefined ? [name] : [name, args]), props: () => target, closeOverlay: (id) => { closed.push(id); context.menuClosed?.(id); }, openOverlay: (spec) => { calls.push(["overlay", spec]); return `o${++opened}`; },
   window: { viewport_size: () => view, mouse_position: () => mouse },
-  theme: () => theme, keys: () => [], settings: () => ({ zoom }), terminals: () => terms, agents: () => agentList, spaces: () => [{ id: "s1", folder: "/work/p1", tabs: [{ id: "b1" }] }], panes: () => [{ pane: "p1", tab: "b1", cwd: "/work/s1" }], exec: async () => ({ code: 1 }),
+  theme: () => theme, keys: () => keyList, settings: () => ({ zoom }), terminals: () => terms, agents: () => agentList, spaces: () => [{ id: "s1", folder: "/work/p1", tabs: [{ id: "b1" }] }], panes: () => [{ pane: "p1", tab: "b1", cwd: "/work/s1" }], exec: async () => ({ code: 1 }),
   shared: (k) => state[k], setShared: (k, v) => { state[k] = v; }, hc: async () => ({ code: 0 }), notify() {},
   layout: () => ({ id: "root", children: [{ id: "sidebar-lists", active: list, children: [] }] }),
+  keyLabel: (k) => tipScope.keyLabel(k),
 });
-const src = ["store.js", "labels.js", "pins.js", "tree.js", "sidebar.js", "project.js", "list.js", "snooze-presets.js", "submenu.js", "main.js"].map((f) => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n")
+const src = ["store.js", "labels.js", "pins.js", "tree.js", "sidebar.js", "project.js", "list.js", "menu-row.js", "snooze-presets.js", "submenu.js", "popup-menu.js", "main.js"].map((f) => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n")
   .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Menu = class").replace(/^export /gm, "");
 vm.runInContext(src, context);
 // Timers run when the test says time has passed.
@@ -59,6 +67,30 @@ assert.ok(block.includes("Copy address") && !["Split right", "Split down", "Zoom
 assert.deepEqual(choose({ tab: "tab", target: { id: "b1", space: "s1" } }, "Rename"), [["tab.rename", { id: "b1" }]], "the rest is Herdr's");
 assert.deepEqual(choose({ tab: "tab", target: { id: "b1", space: "s1" } }, "New tab"), [["tab.new", { space: "s1", folder: "/work/s1" }]], "New tab opens where the space's terminals are, not where it was made");
 assert.deepEqual(choose({ tab: "space", target: { id: "s1" } }, "Close"), [["space.close", { id: "s1" }]], "a space's Close is Herdr's, which asks itself");
+
+// A pane's menu as drawn: each row's icon t3-menu's own, at the layout's 1.75 (t3-tokens P4), Split down's not Split right's;
+// the right column only keys, written as the tooltips and New write them; Copy address shows no address there.
+{
+  keyList = [{ section: "global", action: "pane.split:right", keys: "cmd-d" }, { section: "global", action: "pane.split:down", keys: "cmd-shift-d" }, { section: "layout:herdr-t3", action: "pane.zoom", keys: "cmd-shift-enter" }];
+  target = { tab: "pane", target: { pane: "p1", terminal: "t1" } };
+  const m = new context.Menu(); m.init({}, cx);
+  const rows = vm.runInContext("items", context)(target, null).map((it, i) => {
+    const row = find(m.render(), `mi-${i}`), walk = (n) => !n || typeof n !== "object" ? [] : [n, ...n.items.flatMap(walk)];
+    const icon = walk(row).find((n) => typeof n.style.path === "string")?.style.path, words = walk(row).flatMap((n) => n.items.filter((x) => typeof x === "string"));
+    return { label: it[0], icon, hint: words.filter((w) => w && w !== it[0]) };
+  });
+  const row = (label) => rows.find((r) => r.label === label);
+  for (const r of rows) {
+    assert.match(r.icon, /^mods\/t3-menu\/icons\/[a-z-]+\.svg$/, `${r.label}: t3-menu's own icon`);
+    const svg = fs.readFileSync(path.join(__dirname, r.icon.replace("mods/t3-menu/", "")), "utf8");
+    assert.deepEqual([...new Set(svg.match(/stroke-width="[^"]*"/g))], ['stroke-width="1.75"'], `${r.label}: at 1.75`);
+  }
+  assert.equal(row("Split down").icon, "mods/t3-menu/icons/panel-bottom.svg");
+  assert.notEqual(row("Split down").icon, row("Split right").icon, "the two splits look apart");
+  assert.deepEqual([row("Split right").hint, row("Split down").hint, row("Zoom").hint], [["⌘D"], ["⇧⌘D"], ["⇧⌘Enter"]], "keys as the layout writes them");
+  assert.deepEqual(row("Copy address").hint, [], "no address on the right: only keys go there");
+  keyList = []; target = {};
+}
 
 // An agent's menu, the same from a card, an Agents row or the tab bar's title: what it can do now, read from the agent itself.
 {
@@ -172,9 +204,12 @@ assert.deepEqual(choose({ tab: "space", target: { id: "s1" } }, "Close"), [["spa
   agentList = [{ address: "t1", pane: "p1", tab: "b1", status: "done", focused: true }];
   terms = [{ address: "t1", state: "live", turn: 2, labels: {} }];
   const plain = (v) => JSON.parse(JSON.stringify(v));
+  // Another menu opening closes the one open, as Herdr's popups do: what hung off it goes too.
+  let open = null;
   const root = (overlay = "root") => {
+    open?.close();
     target = { tab: "agent", target: { address: "t1" }, overlay };
-    const m = new context.Menu();
+    const m = open = new context.Menu();
     m.init(target, cx);
     return m;
   };
@@ -182,18 +217,15 @@ assert.deepEqual(choose({ tab: "space", target: { id: "s1" } }, "Close"), [["spa
   const opens = () => calls.filter((c) => c[0] === "overlay").map((c) => plain({ mod: c[1].mod, kind: c[1].kind, at: c[1].at, width: c[1].width, props: c[1].props }));
   const box = { x: 100, y: 200, width: 212, height: 28 };
   const move = (m, i, position, bounds = box) => { calls = []; closed = []; row(m, i).handlers.on_mouse_move({ position, bounds }, cx); };
-  state["t3-menu.chain"] = [{ id: "stale", parents: ["gone"] }];
   let m = root();
-  assert.deepEqual(plain(state["t3-menu.chain"]), [], "a menu opened starts the chain over");
   // Pin, Settle, Snooze, Rename, Copy address, Close: Snooze alone ends in T3's chevron.
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map((i) => row(m, i).items.at(-1).style.path ?? null), [null, null, "mods/workspace-chrome/chevron-right.svg", null, null, null]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((i) => row(m, i).items.at(-1).style.path ?? null), [null, null, "mods/t3-menu/icons/chevron-right.svg", null, null, null]);
   move(m, 2, { x: 150, y: 210 });
   elapse(99);
   assert.deepEqual(calls, [], "not before 100ms on the row");
   elapse(1);
   assert.deepEqual(opens(), [{ mod: "t3-menu", kind: "popup", at: { x: 312, y: 195 }, width: 220, props: { tab: "snooze", target: { address: "t1" }, parents: ["root"] } }], "to the row's right, its first row level with it");
   const first = `o${opened}`;
-  assert.deepEqual(plain(state["t3-menu.chain"]), [{ id: first, parents: ["root"] }]);
   row(m, 2).handlers.on_hover(false, cx);
   assert.equal(row(m, 2).style.bg, theme.selected, "its row stays lit while it's open");
   move(m, 2, { x: 160, y: 211 });
@@ -205,7 +237,6 @@ assert.deepEqual(choose({ tab: "space", target: { id: "s1" } }, "Close"), [["spa
   assert.deepEqual(closed, [], "heading to it: kept");
   elapse(200);
   assert.deepEqual(closed, [first], "stopped short over Rename: closed");
-  assert.deepEqual(plain(state["t3-menu.chain"]), []);
   assert.notEqual(row(m, 2).style.bg, theme.selected);
   // Open again, then away from it: closed after 100ms.
   move(m, 2, { x: 150, y: 210 });
@@ -257,14 +288,14 @@ assert.deepEqual(choose({ tab: "space", target: { id: "s1" } }, "Close"), [["spa
   let s = new context.Menu();
   s.init(target, cx);
   assert.equal(find(s.render(), "mi-0").style.bg, theme.selected, "its first time lit");
+  const focused = m.keys.focused;
   key(s, { key: "left" });
   assert.deepEqual(closed, [sub], "←: it alone closes");
+  assert.equal(m.keys.focused, focused + 1, "and the menu takes the keyboard back as it closes");
   s.close();
-  assert.deepEqual(plain(state["t3-menu.chain"]), [], "and leaves the chain");
   target = { tab: "agent", target: { address: "t1" }, overlay: "root" };
-  const focused = m.handle.focused;
   m.render();
-  assert.equal(m.handle.focused, focused + 1, "the menu takes the keyboard back");
+  assert.equal(m.keys.focused, focused + 1, "drawing again focuses nothing (Herdr refuses focus() there)");
   assert.equal(row(m, 2).style.bg, theme.selected, "on Snooze");
   key(m, { key: "enter" });
   assert.deepEqual(opens().map((o) => o.props.lit), [0], "Enter opens it too");

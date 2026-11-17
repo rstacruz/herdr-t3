@@ -2,7 +2,7 @@
 
 取代 [0011](0011-one-space-panel.md) 里“面板只有一份开关，不按 space 记”这一条。面板仍是窗口右侧唯一的一列，跨标签固定；但它开没开、显示哪一页、放没放大，按 space 各记一份，照 T3 按 thread 记右侧面板（`rightPanelStore` 的 `isOpen`、`activeSurfaceId`、`maximized`）。宽度和 T3 一样，整个窗口一份。没记过的 space 里面板关着。
 
-快捷键也照 T3：`cmd-alt-b` 是 `rightPanel.toggle`；键盘在面板里时 `cmd-w` 关闭面板，对应 T3 焦点不在终端时的 `rightPanel.close`。T3 的 `diff.toggle`（`cmd-d`）只在焦点不在终端时生效，而 Herdr 的焦点几乎总在终端上，所以 `cmd-d` 留给 Herdr 的向右分屏，Review 用 `cmd-shift-g`。T3 没有打开 Files 的键，Files 也不设。
+快捷键也照 T3：`cmd-alt-b` 是 `rightPanel.toggle`；键盘在面板里时 `cmd-w` 关闭面板，对应 T3 焦点不在终端时的 `rightPanel.close`（已由 [0017](0017-space-panel-surfaces.md) 取代：`cmd-w` 关闭当前 surface 标签，不关面板）。T3 的 `diff.toggle`（`cmd-d`）只在焦点不在终端时生效，而 Herdr 的焦点几乎总在终端上，所以 `cmd-d` 留给 Herdr 的向右分屏，Review 用 `cmd-shift-g`。T3 没有打开 Files 的键，Files 也不设。
 
 ## Considered Options
 

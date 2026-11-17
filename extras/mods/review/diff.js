@@ -8,6 +8,7 @@ import { LU, mono, zoom, isLight, checkMark, diffStats, popover } from "./contro
 import { fileStatus } from "./files.js";
 import { emptyState } from "./panel-states.js";
 import { holdWidth } from "./nav-column.js";
+import { alpha } from "./color.js";
 
 // The runs measured for a character's width, and a wide one's: long enough that rounding the whole to a pixel doesn't matter.
 const MEASURED = "0".repeat(100), MEASURED_WIDE = "中".repeat(100);
@@ -120,7 +121,7 @@ export function toggleFull(view, file, cx) {
 export function headerPress(view, file, x, cx) {
   if (view.switching) return;
   const fromEnd = view.view - x;
-  if (x < 30) return view.setReviewed(file, !file.reviewed, cx);
+  if (x < 32) return view.setReviewed(file, !file.reviewed, cx);
   if (fromEnd > 32 && fromEnd <= 56 && canFull(file)) return view.toggleFull(file, cx);
   view.collapsed.has(file.path) ? view.collapsed.delete(file.path) : view.collapsed.add(file.path);
   view.version++;
@@ -204,7 +205,7 @@ export function hbars(view, t) {
     const thumb = Math.max(24, width * width / view.sideWidth[side]);
     return div().id(`hbar-${side}`).absolute().bottom(side === 2 && sides.length > 1 ? 8 : 1).left(side === 1 ? view.view / 2 : 0).w(width).h(6)
       .opacity(view.barsOn ? 1 : 0).transition("opacity", { duration: 150, easing: "ease-out" })
-      .child(div().absolute().left((width - thumb) * Math.min(view.shift[side], max) / max).w(thumb).h_full().rounded_full().bg(t.muted + "80"));
+      .child(div().absolute().left((width - thumb) * Math.min(view.shift[side], max) / max).w(thumb).h_full().rounded_full().bg(alpha(t.muted, "80")));
   });
 }
 
@@ -212,7 +213,7 @@ export function hbars(view, t) {
 // `wrapped`: the row's lines as rows.js's wrapRow cut them, each ROW tall, the numbers and sign beside the first.
 function drawCode(t, row, numbers, shift = 0, wrapped = null) {
   if (!row) return div().flex_1().min_w(0).h_full().bg(t.canvas);
-  const tint = row.kind === "+" ? t.ansi2 + "1c" : row.kind === "-" ? t.ansi1 + "1c" : null;
+  const tint = row.kind === "+" ? alpha(t.ansi2, "1c") : row.kind === "-" ? alpha(t.ansi1, "1c") : null;
   const code = (tokens) => spans(tokens).map(([text, color]) => div().flex_none().text_color(color ?? t.foreground).child(text));
   // Herdr ships JetBrains Mono; Geist Mono, a common terminal font here, draws `=>` over the space before it.
   return h_flex().flex_1().min_w(0).h_full().overflow_hidden().font_family(mono()).when(Boolean(tint), el => el.bg(tint))
@@ -232,10 +233,10 @@ function diffItem(view, t, item) {
       // As the app's file header: the reviewed box, the path and its marks; the counts, the status, the whole file and the fold.
       // A row holds no handlers: headerPress places a press by these parts' positions.
       const f = item.file, open = !view.collapsed.has(f.path), full = view.full.has(f.path), loading = full && !view.full.get(f.path);
-      // As T3's: 8 and 12 in, its controls icon-micro.
+      // 12 in on both sides, the page's edge (t3-tokens「规则」R1); its controls icon-micro. As Pierre's header: on the code's
+      // ground, no rules, the file in front unlit (the tree's selected row says which).
       const slot = () => div().size(20).flex_none().flex().items_center().justify_center();
-      return h_flex().w_full().h(item.size).pl(8).pr(12).gap(8).items_center().border_t(1).border_b(1).border_color(t.border)
-        .bg(view.current === f.path ? t.selected : t.chrome)
+      return h_flex().w_full().h(item.size).px(12).gap(8).items_center()
         .child(checkMark(t, f.changed ? "changed" : f.reviewed ? "all" : "none"))
         .child(div().min_w(0).flex_shrink_1().truncate().when(f.reviewed, el => el.text_color(t.dim)).child(f.previousPath ? `${f.previousPath} → ${f.path}` : f.path))
         .when(f.test, el => el.child(svg(`${LU}/flask-conical.svg`).size(14).flex_none().text_color(isLight(t.background) ? "#15803d" : "#4ade80")))
@@ -254,8 +255,10 @@ function diffItem(view, t, item) {
         .when(item.group.critical, el => el.child(div().text_color(t.blocked).child("!")))
         .child(div().min_w(0).truncate().child(item.group.label));
     case "hunk":
-      // Hunk headers on the raised tone, as Herdr's own changes diff draws them, 11px as T3's hunk separators; `@@` is code, so mono.
-      return div().w_full().h(item.size).px(12).flex().items_center().bg(t.raised).font_family(mono()).text_size(11).text_color(t.dim).truncate().child(item.text);
+      // Hunk headers on the text color at 5%, as Pierre's separator (the code's ground 95%, its text 5%), 11px; `@@` is code, so mono.
+      // Cut inside the 12 on the right too: truncate on the padded row would clip the text at its border.
+      return div().w_full().h(item.size).px(12).flex().items_center().bg(alpha(t.foreground, "0d")).font_family(mono()).text_size(11).text_color(t.dim)
+        .child(div().min_w(0).truncate().child(item.text));
     case "note": {
       // As the app's AnalysisNoteCard: a sparkle, or a critical note's mark, then its Markdown in the UI font.
       // A file's own notes run across the file under its header; a line's sits under the line as a card.
@@ -268,11 +271,9 @@ function diffItem(view, t, item) {
         .child(v_flex().w(noteWidth(view.view, item.anchored)).flex_none()
           .child(TextView.markdown(`note-${item.key}`, note.text).selectable(true).scrollable(false).text_size(12).text_color(t.foreground)));
       return item.anchored
-        ? div().w_full().h(item.size).px(8).py(3)
-          .child(body.w_full().max_w(800).h_full().px(10).py(4).rounded(8).border_1()
-            .border_color(critical ? t.blocked + "4d" : t.border).bg(critical ? t.blocked + "1a" : t.background))
-        : body.w_full().h(item.size).px(12).py(6).when(critical, el => el.bg(t.blocked + "1a"))
-          .when(Boolean(item.last), el => el.border_b(1).border_color(t.border));
+        ? div().w_full().h(item.size).px(12).py(3)
+          .child(body.w_full().max_w(800).h_full().px(10).py(4).rounded(8).bg(critical ? alpha(t.blocked, "1a") : alpha(t.foreground, "0a")))
+        : body.w_full().h(item.size).px(12).py(6).when(critical, el => el.bg(alpha(t.blocked, "1a")));
     }
     case "empty":
       return div().w_full().h(item.size).pl(codeInset(view.splitShown())).pr(12).gap(8).flex().items_center().text_color(t.dim)
@@ -289,7 +290,8 @@ function diffLine(view, t, kind, line) {
     const left = cut(line.left), right = cut(line.right);
     return h_flex().w_full().h(cols ? Math.max(left?.length ?? 1, right?.length ?? 1) * ROW : ROW)
       .child(drawCode(t, line.left, [line.left?.old], Math.min(view.shift[0], view.sideMax(0)), left))
-      .child(div().w(1).h_full().flex_none().bg(t.border))
+      // A 1px gap of the panel's chrome between the halves on background, as Pierre's sides, no rule.
+      .child(div().w(1).h_full().flex_none().bg(t.chrome))
       .child(drawCode(t, line.right, [line.right?.new], Math.min(view.shift[1], view.sideMax(1)), right));
   }
   const numbers = kind === "solo" ? [line.kind === "-" ? line.old : line.new] : [line.old, line.new], lines = cut(line);

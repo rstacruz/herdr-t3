@@ -3,15 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function bundle(file, seen = new Set()) {
-  if (seen.has(file)) return "";
-  seen.add(file);
-  const src = fs.readFileSync(path.join(__dirname, file), "utf8");
-  const needs = [...src.matchAll(/^import [^;]*? from "\.\/(.+?)";/gm)].map(m => bundle(m[1], seen)).join("\n");
-  return needs + "\n" + src.replace(/^import [^;]*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ");
-}
-const source = bundle("repos.js");
-const plain = value => JSON.parse(JSON.stringify(value));
+const kit = require("./check-kit.js"), { plain } = kit;
+const source = kit.bundle((file) => fs.readFileSync(path.join(__dirname, file), "utf8"), "repos.js");
 const flush = async () => { for (let i = 0; i < 4; i++) await new Promise(setImmediate); };
 const status = ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v2", "--branch", "--untracked-files=no"];
 const space = (id, folder, machine = null) => ({ id, folder, machine, tabs: [{ id: `b-${id}` }] });
@@ -28,7 +21,15 @@ function fixture(spaces = [space("s0", "/work/s0"), space("s1", "/work/p1"), spa
   const adapter = {
     cx,
     exec: (cmd, args, options) => { commands.push([cmd, [...args], { ...options }]); return Promise.resolve().then(() => answer(cmd, args, options)); },
-    watchFolder: dir => new Promise(resolve => watches.push({ dir, resolve })),
+    watchFolder(dir) {
+      let finish;
+      const wait = new Promise(resolve => {
+        const watch = { dir, resolve: paths => { watches.splice(watches.indexOf(watch) >>> 0, 1); resolve(paths); } };
+        watches.push(watch); finish = watch.resolve;
+      });
+      wait.cancel = () => finish([]);
+      return wait;
+    },
   };
   const scope = vm.createContext({ Date: { now: () => now } });
   vm.runInContext(source, scope, { filename: "repos.js" });
@@ -39,12 +40,45 @@ function fixture(spaces = [space("s0", "/work/s0"), space("s1", "/work/p1"), spa
     update(at = now) { now = at; repos.update(snapshot, now); },
     fact: s => plain(repos.forSpace(s, snapshot.panes)),
     looks: () => commands.filter(([, args]) => args.includes("status")).map(([, , { cwd, on }]) => [on, cwd]),
-    wake(dir) { for (const watch of watches.splice(0)) { if (watch.dir === dir) watch.resolve([]); else watches.push(watch); } },
+    wake(dir) { for (const watch of [...watches]) if (watch.dir === dir) watch.resolve([]); },
     async flush() { await flush(); assert.deepEqual(errors, []); },
   };
 }
 
 async function check() {
+  {
+    const s = space("s", "/work/main"), f = fixture([s]);
+    const other = fixture([space("other", "/work/main")]);
+    other.update(); await other.flush();
+    for (let i = 0; i < 65; i++) {
+      f.update(); await f.flush();
+      assert.equal(f.watches.length, 1, "reopening has exactly one wait");
+      f.snapshot.spaces = []; f.update();
+      assert.equal(f.watches.length, 0, "closing a silent repo immediately cancels its pending wait");
+      await f.flush();
+      assert.equal(other.watches.length, 1, "another subscriber to the same folder stays alive");
+      f.snapshot.spaces = [s];
+    }
+    f.update(); await f.flush();
+    f.repos.close();
+    assert.equal(f.watches.length, 0, "closing the view releases its waits too");
+    await f.flush();
+    assert.equal(f.watches.length, 0, "cancel does not restart a loop");
+  }
+  {
+    const f = fixture([space("s", "/work/main")]);
+    let finish;
+    f.answer(() => new Promise(resolve => { finish = resolve; }));
+    f.update(); await f.flush();
+    f.snapshot.spaces = []; f.update();
+    finish({ code: 0, stdout: "# branch.head main\n", stderr: "" });
+    await f.flush();
+    assert.equal(f.watches.length, 0, "a read for a closed repo cannot install a late watch");
+    assert.equal(f.commands.length, 1, "a closed repo needs no further probes");
+    f.answer((_cmd, args) => ({ code: 0, stderr: "", stdout: args.includes("status") ? "# branch.head main\n" : args.includes("--show-toplevel") ? "/work/main\n" : "/work/main/.git\n" }));
+    f.snapshot.spaces = [space("s", "/work/main")]; f.update(); await f.flush();
+    assert.equal(f.watches.length, 1, "reopening after an abandoned first read probes and watches again");
+  }
   {
     // One queue per machine; a place is asked only once while waiting.
     const f = fixture(), [s0, s1, s2] = f.snapshot.spaces;
@@ -107,7 +141,7 @@ async function check() {
     f.snapshot.spaces.push(s1);
     f.update();
     await f.flush();
-    assert.equal(f.watches.filter(w => w.dir === "/work/p1/.git").length, 2, "the old watch can't be taken back");
+    assert.equal(f.watches.filter(w => w.dir === "/work/p1/.git").length, 1, "the old watch is cancelled before reopening");
     f.commands.splice(0);
     f.wake("/work/p1/.git");
     await f.flush();

@@ -41,6 +41,12 @@ export function onStop(view) {
   return null;
 }
 
+// The keyboard onto stop `id`, ringed: Tab's work done by keys in an overlay (Details' arrows), or enter's. Not in render.
+export function focusStop(view, id) {
+  view.fs.keyboard = true;
+  handleOf(view.fs, id)?.focus();
+}
+
 // T3's group-focus-within: what a row shows hovered it shows with the keyboard on it or inside it.
 export const within = (view, ids) => ids.includes(onStop(view));
 
@@ -64,11 +70,10 @@ function watch(view, cx) {
 // pane.go landed here: onto the stop it left, else `first`, which is always drawn. Once only: a stop gone from the list loses
 // the keyboard, and Herdr would hand it back here for another try.
 export function enter(view, cx, first) {
-  const s = view.fs, h = handleOf(s, s.last ?? first);
+  const s = view.fs, id = s.last ?? first;
   s.last = null;
-  s.keyboard = true;
   setShared(MODE, s.me);
-  h?.focus();
+  focusStop(view, id);
   watch(view, cx);
   cx.notify();
 }
@@ -120,6 +125,9 @@ export function stop(view, t, id, el, radius = 6, { enter: act, handle } = /** @
     // Runs before the press takes the keyboard. No walk in this copy: the mode's another's or left over, and a press ends it, as
     // focus-visible's does. Next frame this isn't a stop, and Herdr hands the keyboard back.
     .when(!s.modal, (e) => e.on_mouse_down("left", () => { if (!s.watch) setShared(MODE, null); }))
+    // Enter or Space here is the keys' click (the host clicks on its release): a press before it that came to nothing (released
+    // off the control, so no click) is over, so neither its box (trigger.js openFrom) nor its time (pressed) carries over.
+    .on_key_down((k) => { if (k.keystroke === "enter" || k.keystroke === "space") { view.pressAt = null; view.openFrom = null; } })
     .when(Boolean(act), (e) => e.on_key_down((k, cx) => {
       // A control inside it shares its focus path: that's the control's key.
       if ((k.keystroke !== "enter" && k.keystroke !== "space") || !h.is_focused()) return;

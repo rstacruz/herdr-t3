@@ -4,7 +4,8 @@ import { h_flex, Popup } from "gpui-base";
 import { spaces, run } from "herdr";
 import { namer } from "./name.js";
 import { focusAgent } from "./zoom.js";
-import { agentKids, kidStatus } from "./tree.js";
+import { kidStatus, kidTree } from "./tree.js";
+import { statusMark, STATUS_WORD } from "./status-mark.js";
 import { projectMark } from "./project.js";
 import { glow, hoverKept, tip, tipMark } from "./tip.js";
 import { detailsFor, detailsAt, detailsLine, detailsCard } from "./details.js";
@@ -14,6 +15,7 @@ import { MOTION, foldArrow } from "./motion.js";
 import { pin } from "./pins.js";
 import { openMenu } from "./menu.js";
 import { button, radiusOf } from "./button.js";
+import { alpha } from "./color.js";
 
 // T3's one-line row and shelf or folder header, its folders 8 apart and its list's 1px between items (gap-px).
 const ROW = 36, HEAD = 32, HEAD_GAP = 8;
@@ -30,26 +32,12 @@ function duration(ms) {
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
-// Live sub-agents of `addr`, depth first, each with the tree lines in front of it. A shell between isn't one (tree.js).
-function agentTree(all, addr, lead = [], seen = new Set()) {
-  if (seen.has(addr)) return [];
-  seen.add(addr);
-  const kids = agentKids(all, addr, seen);
-  return kids.flatMap((k, i) => {
-    const last = i === kids.length - 1;
-    return [
-      { t: k, depth: lead.length + 1, lines: [...lead, last ? "└" : "├"] },
-      ...agentTree(all, k.address, [...lead, last ? "" : "│"], seen),
-    ];
-  });
-}
-
 // `ghost`: drawn for its leaving, without handlers or ids the list uses.
 // A row's right-click: the agent's menu (t3-menu), its details card taken down first.
 const agentMenu = (view, address) => (_e, cx) => { detailsFor(view, null, cx); openMenu(view, "agent", { address }, cx); };
 
 function agentSubRow(view, t, s, shown, card, ghost) {
-  const k = s.t;
+  const k = s.k;
   const st = kidStatus(k, view.listed);
   const pic = programIcon(k.program, 14, t.foreground);
   const on = k.address === shown;
@@ -58,8 +46,8 @@ function agentSubRow(view, t, s, shown, card, ghost) {
   const over = !ghost && (view.hovered === rowId || within(view, [rowId]));
   const base = h_flex()
     .relative()
-    .pl(10 + s.depth * 20)
-    .pr(10)
+    .pl(28 + s.depth * 20)
+    .pr(8)
     .rounded(6)
     .h(ROW)
     .flex_none()
@@ -67,10 +55,10 @@ function agentSubRow(view, t, s, shown, card, ghost) {
     .gap(10)
     .text_size(14)
     .when(on, (el) => el.bg(t.selected))
-    // Upstream's 9px turn, hung from each ancestor's icon center (18px, then every 20px), ending 4px short of this icon.
+    // Upstream's 9px turn, hung from each ancestor's icon center (16px, then every 20px), ending 4px short of this icon.
     .children(s.lines.flatMap((l, j) => [
-      l === "│" || l === "├" ? div().absolute().left(17.25 + 20 * j).top(0).bottom(-STACK).w(1.5).bg(t.input) : null,
-      l === "├" || l === "└" ? div().absolute().left(17.25 + 20 * j).top(-4).h(22).w(9.75).border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input) : null,
+      l === "│" || l === "├" ? div().absolute().left(15.25 + 20 * j).top(0).bottom(-STACK).w(1.5).bg(t.input) : null,
+      l === "├" || l === "└" ? div().absolute().left(15.25 + 20 * j).top(-4).h(22).w(9.75).border_l(1.5).border_b(1.5).rounded_bl(6).border_color(t.input) : null,
     ].filter(Boolean)))
     .child(h_flex().size(16).flex_none().items_center().justify_center()
       .when(Boolean(pic), el => el.child(pic)))
@@ -100,29 +88,25 @@ function agentSubRow(view, t, s, shown, card, ghost) {
 }
 
 export function agentStatus(view, t, a, note = "", id) {
-  const color = t[a.status] ?? t.dim;
-  let mark;
-  if (a.status === "working") mark = svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900);
-  else if (a.status === "blocked") mark = div().size(12).flex_none().rounded(3).bg(t.blocked + "26").text_size(10).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
-  // Idle: a ring; done: a dot. Every mark is 12 wide, as T3's one-line row, flush right, so the column ends where Spaces' git info does.
-  else if (a.status === "idle") mark = div().size(6).mx(3).flex_none().rounded_full().border(1.5).border_color(t.idle ?? t.dim);
-  else mark = div().size(6).mx(3).flex_none().rounded_full().bg(a.status === "done" ? color : t.dim + "00");
-  const label = (SECTION[RANK[a.status]] ?? "Unknown") + note;
+  // Idle: a ring. Every mark is 12 wide, as T3's one-line row, flush right, so the column ends where Spaces' git info does.
+  const mark = statusMark(t, a.status) ?? div().size(6).flex_none().rounded_full()
+    .when(a.status === "idle", (el) => el.border(1.5).border_color(t.idle ?? t.dim));
+  const label = (STATUS_WORD[a.status] ?? "Unknown") + note;
   const el = h_flex().size(20).flex_none().items_center().justify_end()
-    .role("status").accessibility_label(label).child(mark);
+    .role("status").accessibility_label(label).child(h_flex().w(12).flex_none().justify_center().child(mark));
   return id ? tipMark(view, t, `${id}-mark`, label, el.id(id)) : el;
 }
 
 export function agentEntries(view, t, { list, all, shown, ps, now, viewing, byPriority, own, shownStatus, groups }) {
   const withKids = (a) => {
-    const subs = agentTree(all, a.address);
-    const r = { key: a.address, h: ROW + STACK, el: row(a, subs), ghost: () => row(a, subs, true) };
+    const subs = kidTree(all, a.address);
+    const r = { key: a.address, h: ROW + STACK, el: () => row(a, subs), ghost: () => row(a, subs, true) };
     // A sub-agent with no pane of its own isn't in agents(): it's placed by the agent it hangs from, and has no branch to name, as its folder may be another worktree.
-    const sub = (s) => ({ key: `sub-${s.t.address}`, h: ROW + STACK, el: agentSubRow(view, t, s, shown, (name, key) => details(list.find((x) => x.address === s.t.address) ?? { ...s.t, space: a.space, space_name: a.space_name }, name, key)), ghost: () => agentSubRow(view, t, s, shown, null, true) });
+    const sub = (s) => ({ key: `sub-${s.k.address}`, h: ROW + STACK, el: () => agentSubRow(view, t, s, shown, (name, key) => details(list.find((x) => x.address === s.k.address) ?? { ...s.k, space: a.space, space_name: a.space_name }, name, key)), ghost: () => agentSubRow(view, t, s, shown, null, true) });
     if (!view.isFolded(a.address)) return [r, ...subs.map(sub)];
     // Folded, a sub-agent that needs the person still shows, hung straight from its parent.
-    const stuck = subs.filter((s) => kidStatus(s.t, view.listed) === "blocked");
-    return [r, ...stuck.map((s, j) => sub({ t: s.t, depth: 1, lines: [j === stuck.length - 1 ? "└" : "├"] }))];
+    const stuck = subs.filter((s) => ["blocked", "error"].includes(kidStatus(s.k, view.listed)));
+    return [r, ...stuck.map((s, j) => sub({ k: s.k, depth: 0, lines: [j === stuck.length - 1 ? "└" : "├"] }))];
   };
 
   // A fold's animated svg and its count brighten together.
@@ -161,7 +145,7 @@ export function agentEntries(view, t, { list, all, shown, ps, now, viewing, byPr
     const up = view.details === key || view.detailsOut === key;
     return Popup.new(`details-${key}`, div()).absolute().top(-1).right(-1).size(1)
       .when(up, (pop) => pop.content(detailsCard(view, t, key, name, [
-        a.space_name && detailsLine(t, projectMark(spaces().find((s) => s.id === a.space) ?? { name: a.space_name }, 12, t, ps, true), a.space_name),
+        a.space_name && detailsLine(t, projectMark("mods/t3-agents", spaces().find((s) => s.id === a.space) ?? { name: a.space_name }, 12, t, ps, true), a.space_name),
         machine && detailsLine(t, svg("mods/t3-agents/icons/server.svg").size(12).flex_none().text_color(t.muted), machine),
         branch && detailsLine(t, svg("mods/t3-agents/icons/git-branch.svg").size(12).flex_none().text_color(t.muted), branch),
         pic && detailsLine(t, div().flex_none().opacity(0.6).child(pic), a.program.name),
@@ -207,7 +191,7 @@ export function agentEntries(view, t, { list, all, shown, ps, now, viewing, byPr
     const base = h_flex()
       .relative()
       .w_full().min_w(0)
-      .px(10)
+      .px(8)
       .h(ROW)
       .flex_none()
       .rounded(6)
@@ -289,14 +273,14 @@ export function agentEntries(view, t, { list, all, shown, ps, now, viewing, byPr
     const dot = top && top !== "idle";
     const space = spaces().find((s) => s.id === g.space) ?? { name: g.label };
     const base = h_flex()
-      .px(10)
+      .px(8)
       .h(HEAD)
       .flex_none()
       .gap(10)
       .items_center()
       .rounded(8)
-      .child(projectMark(space, 16, t, ps, true))
-      .child(div().flex_1().min_w(0).truncate().font_medium().text_color(t.foreground + "e6").child(g.label))
+      .child(projectMark("mods/t3-agents", space, 16, t, ps, true))
+      .child(div().flex_1().min_w(0).truncate().font_medium().text_color(alpha(t.foreground, "e6")).child(g.label))
       .when(Boolean(dot), (el) => el.child(div().size(6).flex_none().rounded_full().bg(t[top]).role("status").accessibility_label(SECTION[RANK[top]])))
       .when(hiding.length > 0, (el) => el.child(div().flex_none().text_size(12).text_color(t.dim).child(String(hiding.length))))
       .child(chevron(g, open, ghost));
@@ -313,7 +297,7 @@ export function agentEntries(view, t, { list, all, shown, ps, now, viewing, byPr
   const entries = groups.flatMap((g, i) => {
     const open = !view.isFolded(g.id, g.id === "sec-1");
     const head = (ghost) => g.space ? div().flex_none().when(i > 0, (el) => el.pt(HEAD_GAP)).child(folder(g, open, ghost)) : shelf(g, open, ghost);
-    return [{ key: `m:${g.id}`, h: HEAD + STACK + (g.space && i ? HEAD_GAP : 0), el: head(false), ghost: () => head(true) },
+    return [{ key: `m:${g.id}`, h: HEAD + STACK + (g.space && i ? HEAD_GAP : 0), el: () => head(false), ghost: () => head(true) },
       ...(open ? g.members : g.members.filter(viewing)).flatMap(withKids)];
   });
 

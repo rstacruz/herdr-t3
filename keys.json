@@ -1,6 +1,6 @@
 {
   "layout:herdr-t3": {
-    "cmd-shift-b": "t3-tabs.sidebar",
+    "cmd-shift-b": "t3-tabs.details",
     "cmd-shift-g": "t3-tabs.review",
     "cmd-alt-b": "t3-tabs.panel",
     "cmd-shift-s": "t3-tabs.settle",
@@ -112,18 +112,6 @@
     "cmd-shift-w": "overlay.close",
     "ctrl-alt-x": "overlay.close"
   },
-  "mod:frame-settings": {
-    "cmd-w": "overlay.close",
-    "ctrl-alt-shift-x": "overlay.close",
-    "cmd-shift-w": "overlay.close",
-    "ctrl-alt-x": "overlay.close"
-  },
-  "mod:frame-palette": {
-    "cmd-w": "overlay.close",
-    "ctrl-alt-shift-x": "overlay.close",
-    "cmd-shift-w": "overlay.close",
-    "ctrl-alt-x": "overlay.close"
-  },
   "mod:help": {
     "cmd-w": "overlay.close",
     "ctrl-alt-shift-x": "overlay.close",
@@ -161,14 +149,22 @@
     "ctrl-alt-x": "overlay.close"
   },
   "mod:t3-files": {
+    "cmd-t": "t3-chrome.surface-menu",
     "cmd-w": "t3-files.close",
     "ctrl-alt-shift-x": "t3-files.close"
   },
   "mod:review": {
+    "cmd-t": "t3-chrome.surface-menu",
     "cmd-w": "review.close",
     "ctrl-alt-shift-x": "review.close"
   },
   "mod:t3-labels": {
+    "cmd-w": "overlay.close",
+    "ctrl-alt-shift-x": "overlay.close",
+    "cmd-shift-w": "overlay.close",
+    "ctrl-alt-x": "overlay.close"
+  },
+  "mod:asciicn-wallpaper": {
     "cmd-w": "overlay.close",
     "ctrl-alt-shift-x": "overlay.close",
     "cmd-shift-w": "overlay.close",

@@ -1,0 +1,20 @@
+const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
+let f = { space: 's', tab: 'b', terminal: 't1', cwd: '/source' }, all = [{ tab: 'b', terminal: 't1' }];
+let space = { id: 's', active: true, folder: '/space', tabs: [{ id: 'b', active: true }] };
+const c = vm.createContext({ focused: () => f, panes: () => all, spaces: () => [space], Map });
+vm.runInContext(fs.readFileSync(__dirname + '/terminal-context.js', 'utf8').replace(/^import .*;\n/gm, '').replace(/^export /gm, '') + '\nglobalThis.api = { rememberTerminal, terminalFor, workFolder };', c);
+assert.equal(c.api.terminalFor().terminal, 't1');
+f = { space: 's', tab: 'b', terminal: null, cwd: null };
+assert.equal(c.api.terminalFor().cwd, '/source', 'mod focus keeps the source terminal and cwd');
+assert.equal(c.api.terminalFor('s', 'other'), null, 'never fall back to another tab');
+all = []; assert.equal(c.api.terminalFor(), null, 'closed terminals are not paste targets');
+// The folder a tab works in: its last terminal's cwd as it is now, else another of its terminals', else the space's.
+f = { space: 's', tab: 'b', terminal: 't2', cwd: '/old' }; all = [{ tab: 'b', terminal: 't2', cwd: '/repo/sub' }];
+assert.equal(c.api.workFolder(), '/repo/sub', 'the terminal cwd now, not when it was focused');
+f = null; all = [{ tab: 'b', terminal: 't2', cwd: '/repo/sub' }, { tab: 'b', terminal: 't3', cwd: '/elsewhere' }];
+assert.equal(c.api.workFolder(), '/repo/sub', 'focus gone to a mod: the last terminal still counts');
+all = [{ tab: 'b', terminal: 't4', cwd: '/beside' }];
+assert.equal(c.api.workFolder(), '/beside');
+all = [];
+assert.equal(c.api.workFolder(), '/space', 'no terminal: the space folder');
+console.log('ok: last active terminal stays per tab and is removed when closed; a tab works in its last terminal\'s folder');

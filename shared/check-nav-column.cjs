@@ -5,10 +5,9 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const store = new Map();
-const src = "const drawButton = (() => {\n" + fs.readFileSync(path.join(__dirname, "button.js"), "utf8")
-  .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export /gm, "") + "\nreturn button;\n})();\n" + fs.readFileSync(path.join(__dirname, "nav-column.js"), "utf8")
+const src = ["tip.js", "color.js", "nav-column.js"].map((f) => fs.readFileSync(path.join(__dirname, f), "utf8")).join("\n")
   .replace(/^import [^;]*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ")
-  + "\nglobalThis.nav = { navRange, navWidth, navOpen, setNavOpen, withNav, holdWidth, ghostButton };";
+  + "\nglobalThis.nav = { navRange, navWidth, navOpen, setNavOpen, withNav, holdWidth };";
 // Elements that keep their handlers and widths: a fake page to drag the column's edge in.
 const made = [];
 const element = () => {
@@ -19,6 +18,7 @@ const element = () => {
     if (key === "w") target.w = args[0];
     if (["text_color", "opacity", "bg"].includes(key)) target.style[key] = args[0];
     if (key === "on_mouse_move" || key === "on_hover" || key === "on_click") target.on[key] = args[0];
+    if (key === "on_key_down") target.on[key] = args[0];
     if (key === "on_mouse_down" || key === "on_mouse_up") target.on[key] = args[1];
     if (key === "when") return args[0] ? args[1](proxy(target)) : proxy(target);
     return proxy(target);
@@ -28,29 +28,14 @@ const proxies = new Map();
 const proxy = (target) => proxies.get(target);
 const make = () => { const p = element(); proxies.set(made.at(-1), p); return p; };
 const sets = [];
-const context = vm.createContext({ KEY: { navWidth: "t3.navWidth" }, shared: (k) => store.get(k) ?? null,
+let win = { active: true };
+const context = vm.createContext({ KEY: { navWidth: "t3.navWidth" }, shared: (k) => store.get(k) ?? null, keys: () => [], window: () => win, Popup: { new: () => make() },
   setShared: (k, v) => { sets.push([k, v]); store.set(k, v); }, settings: () => ({ zoom: 2 }),
-  div: make, h_flex: make, v_flex: make, svg: make,
+  div: make, h_flex: make, v_flex: make, svg: make, ghostButton: make,
   localStorage: { getItem: (k) => store.get(`local:${k}`) ?? null, setItem: (k, v) => { sets.push([k, String(v)]); store.set(`local:${k}`, String(v)); } } });
 vm.runInContext(src, context);
-const { navRange, navWidth, navOpen, setNavOpen, withNav, holdWidth, ghostButton } = context.nav;
+const { navRange, navWidth, navOpen, setNavOpen, withNav, holdWidth } = context.nav;
 
-{
-  const t = { foreground: "#ffffff", dim: "#888888" }, view = {};
-  let clicks = 0;
-  const cx = { notify() {}, stop_propagation() {} };
-  const draw = (disabled = false) => ghostButton(t, "mods/review", "toggle", "folder-tree", "Tree", () => clicks++, { view, disabled });
-  const live = draw();
-  assert.equal(live.style.text_color, t.dim);
-  live.on.on_hover(true, cx);
-  assert.equal(draw().style.text_color, t.foreground, "the real helper brightens the hovered icon");
-  live.on.on_click({}, cx);
-  const disabled = draw(true);
-  assert.equal(disabled.style.opacity, 0.64);
-  assert.equal(disabled.on.on_click, undefined, "disabled has no click handler");
-  assert.equal(disabled.on.on_hover, undefined, "disabled has no hover tracking");
-  assert.equal(clicks, 1);
-}
 
 assert.deepEqual([...navRange(1200)], [160, 560], "wide: 560 at most");
 assert.deepEqual([...navRange(681)], [160, 425], "the content keeps 256");
@@ -71,7 +56,7 @@ assert.equal(navOpen(), false);
 // alone, and the width it lands at is written once, on release. Its width is this page's own, whatever the page's width:
 // nothing is named after the page, so a page's resize can't scale it for a frame (Herdr's resizable groups did).
 {
-  const cx = { notified: 0, notify() { this.notified++; }, stop_propagation() {} };
+  const cx = { notified: 0, notify() { this.notified++; }, stop_propagation() {}, timer: { every: () => ({ cancel() {} }) } };
   const page = () => { made.length = 0; proxies.clear(); withNav({ border: "#333" }, "p", 1000, { content: make(), head: make(), list: make(), open: true }); return made; };
   const nav = (els) => els.find(e => e.ids.includes("p-nav")), edge = (els) => els.find(e => e.ids.includes("p-nav-edge")), root = (els) => els.find(e => e.on.on_mouse_move);
   store.set("local:nav.width", "300"); sets.length = 0;
@@ -96,6 +81,22 @@ assert.equal(navOpen(), false);
   root(page()).on.on_mouse_move({ position: { x: 980, y: 10 } }, cx);
   root(page()).on.on_hover(false, cx);
   assert.deepEqual(sets, [["nav.width", "310"]]);
+  // The window goes inactive mid-drag (a release outside it brings neither a release nor a leave): the drag ends there, as
+  // the sidebar's and Inbox's do (tip.js dragGone), and the column stops following the pointer.
+  store.set("local:nav.width", "300"); sets.length = 0;
+  const watches = [], tcx = { ...cx, timer: { every: (_ms, fn) => { const w = { fn, cancel() { w.gone = true; } }; watches.push(w); return w; } } };
+  edge(page()).on.on_mouse_down({ position: { x: 1000, y: 10 } }, tcx);
+  root(page()).on.on_mouse_move({ position: { x: 980, y: 10 }, bounds: { x: 0, y: 0, width: 1000, height: 800 } }, tcx);
+  assert.equal(nav(page()).w, 310);
+  win = { active: false };
+  watches.filter(w => !w.gone).forEach(w => w.fn(tcx));
+  assert.deepEqual(sets, [["nav.width", "310"]], "let go where it was, saved");
+  win = { active: true };
+  root(page()).on.on_mouse_move({ position: { x: 950, y: 10 } }, tcx);
+  assert.equal(nav(page()).w, 310, "back in the window, the pointer moves nothing");
+  assert.ok(watches.every(w => w.gone), "and nothing is left watching");
+  root(page()).on.on_mouse_up({ position: { x: 400, y: 400 } }, tcx);
+  assert.deepEqual(sets, [["nav.width", "310"]], "a later click saves nothing more");
 }
 
 // The other page has its own localStorage even though the renderer and drag algorithm are the same.
@@ -122,4 +123,30 @@ assert.equal(navWidth(681), 310, "the pages retain different widths");
   assert.equal(cx.notified, 2, "settling at the same width does not request another frame");
 }
 
-console.log("ok: independent nav widths and open state; a changing width settles after 300ms without stale timers crossing pages.");
+{
+  const handle = { is_focused: () => true }, cx = { stop_propagation() {}, notify() {} };
+  const key = value => {
+    made.length = 0;
+    withNav({}, "files", 900, { content: null, head: null, list: null, open: true, handle });
+    made.find(el => el.ids.includes("files-nav-edge")).on.on_key_down({ key: value }, cx);
+  };
+  store.set("local:nav.width", "300");
+  key("left"); assert.equal(navWidth(900), 316);
+  key("right"); assert.equal(navWidth(900), 300);
+  key("home"); assert.equal(navWidth(900), 160);
+  key("end"); assert.equal(navWidth(900), 560);
+}
+// As T3's code surface (`--code-background`) beside its FileExplorerPane (`bg-background`): the content on the theme's
+// `background`, the column on the page's chrome, and the column's own border/60 rule between them, as T3 keeps it.
+{
+  const t = { background: "BG", border: "#333" };
+  const page = (open) => { made.length = 0; proxies.clear(); withNav(t, "p", 1000, { content: make(), head: make(), list: make(), open }); return made; };
+  const byId = (els, id) => els.find(e => e.ids.includes(id));
+  let els = page(true);
+  assert.equal(byId(els, "p-main")?.style.bg, "BG", "the content on background");
+  assert.equal(byId(els, "p-nav").style.bg, undefined, "the column stays on the page's chrome");
+  assert.deepEqual([byId(els, "p-nav-rule").style.bg, byId(els, "p-nav-rule").style.opacity], ["#333", 0.6], "T3's border-l border/60 stays");
+  els = page(false);
+  assert.equal(byId(els, "p-solo").style.bg, "BG", "the column closed, the content keeps its ground");
+}
+console.log("ok: independent nav widths/open state, keyboard resize and width settling without stale cross-page timers.");

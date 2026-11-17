@@ -3,15 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function bundle(file, seen = new Set()) {
-  if (seen.has(file)) return "";
-  seen.add(file);
-  const src = fs.readFileSync(path.join(__dirname, file), "utf8");
-  const needs = [...src.matchAll(/^import [^;]*? from "\.\/(.+?)";/gm)].map(m => bundle(m[1], seen)).join("\n");
-  return needs + "\n" + src.replace(/^import [^;]*;\r?\n/gm, "").replace(/^export (function|const) /gm, "$1 ");
-}
-const source = bundle("navigation.js");
-const plain = value => JSON.parse(JSON.stringify(value));
+const kit = require("./check-kit.js"), { plain } = kit;
+const source = kit.bundle((file) => fs.readFileSync(path.join(__dirname, file), "utf8"), "navigation.js");
 const flush = () => new Promise(setImmediate);
 
 // twice: every frame() runs twice, as the tab strip and the keys copy both track one navigation each frame (main.js).
@@ -30,6 +23,7 @@ function fixture() {
   let now = 1000000, hcAnswer = () => ({ code: 0 });
   const cx = { notify() {}, timer: { after(ms, fn) { const t = { ms, fn }; timers.push(t); return t; } } };
   const core = {
+    checking: () => false,
     spaces: () => spaces, agents: () => agents, terminals: () => terminals, panes: () => panes, machines: () => machines,
     focused: () => shown, shared: key => state[key], setShared: (key, value) => { state[key] = value; },
     layout: () => ({ children: Object.values(slots) }), home: () => "/home/test", window: () => ({ active: true }),

@@ -18,7 +18,14 @@ export function repoFacts({ exec, watchFolder, cx }) {
   let busy = {}; // pane -> an agent working or a program in front of its shell
   const ready = {}; // machine -> its layout was readable at the last look
   let at = {}; // space -> its where() at the last look
-  const watching = new Map(); // local repos' git folders -> their watch's own token
+  const watching = new Map(); // This run only: local git folders -> { wait }, each loop's own token
+  let closed = false;
+
+  function unwatch(repo) {
+    const token = watching.get(repo);
+    watching.delete(repo);
+    token?.wait?.cancel();
+  }
 
   // Places whose git could have changed: new ones (a new space, a cd), where a
   // command or an agent's turn just ended (a checkout, a commit, edits), those on
@@ -29,11 +36,12 @@ export function repoFacts({ exec, watchFolder, cx }) {
     for (const s of sp) next[s.id] = where(s, ps);
     const keys = new Set(Object.values(next).filter((k) => JSON.parse(k)[1]));
     // Where no space is any more: forgotten, so a commit looks only where spaces are and a repo none is in isn't watched.
-    for (const k of Object.keys(git)) if (!keys.has(k)) { delete git[k]; delete checked[k]; unsure.delete(k); }
+    for (const k of Object.keys(git)) if (!keys.has(k)) { delete git[k]; unsure.delete(k); }
+    for (const k of Object.keys(checked)) if (!keys.has(k)) delete checked[k];
     // Not while a place is unanswered: a cd within a repo would let it go and watch it again.
     if ([...keys].every((k) => k in git)) {
       const used = new Set(Object.values(git).filter(Boolean).map((g) => JSON.parse(g.repo)).filter(([on]) => !on).map(([, repo]) => repo));
-      for (const repo of watching.keys()) if (!used.has(repo)) watching.delete(repo);
+      for (const repo of watching.keys()) if (!used.has(repo)) unwatch(repo);
     }
     const due = new Set([...keys].filter((k) => !(k in git) && !(k in checked)));
     for (const [id, k] of Object.entries(next)) if (at[id] && at[id] !== k && keys.has(k)) due.add(k);
@@ -69,6 +77,7 @@ export function repoFacts({ exec, watchFolder, cx }) {
 
   // One look at a time on each machine, so one that hangs holds up only its own places; each place once however often it was asked for meanwhile.
   function refreshGit(keys, cx) {
+    if (closed) return;
     const now = Date.now(), machineOf = (k) => JSON.parse(k)[0];
     for (const k of keys) { pending.add(k); checked[k] = now; }
     for (const on of new Set([...pending].map(machineOf))) {
@@ -88,10 +97,13 @@ export function repoFacts({ exec, watchFolder, cx }) {
   // One place's git: branch, ahead/behind, its repo.
   async function check(key, cx) {
     const [on, cwd] = JSON.parse(key);
+    const wanted = () => !closed && Object.values(at).includes(key);
+    if (!wanted()) return;
     try {
       // No optional locks: a status that touched the index would wake the watch again.
       // Writes nothing under .git (index lock, fsmonitor cookie): watch() would wake on it.
       const r = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v2", "--branch", "--untracked-files=no"], { cwd, on });
+      if (!wanted()) return;
       unsure.delete(key); // Only now: until it answers, what it couldn't say stays unsaid.
       if (r.code !== 0) {
         // Only git's own "no" is remembered as no repo; anything else is asked again.
@@ -102,6 +114,7 @@ export function repoFacts({ exec, watchFolder, cx }) {
       // The repo's own .git folder names it; a worktree's top differs from it.
       const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on });
       const common = await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, on });
+      if (!wanted()) return;
       const repo = common.stdout.trim();
       const name = repo.endsWith("/.git") ? base(repo.slice(0, -5)) : base(repo).replace(/\.git$/, "");
       const info = { name, branch: null, ahead: 0, behind: 0, repo: JSON.stringify([on, repo]), linked: repo !== `${top.stdout.trim()}/.git` };
@@ -116,6 +129,7 @@ export function repoFacts({ exec, watchFolder, cx }) {
       git[key] = info;
       if (!on) watch(repo, cx);
     } catch {
+      if (!wanted()) return;
       // Couldn't ask (the machine is away): keep what it showed, look again later.
       git[key] ??= null;
       unsure.add(key);
@@ -124,13 +138,14 @@ export function repoFacts({ exec, watchFolder, cx }) {
 
   function watch(repo, cx) {
     if (watching.has(repo)) return;
-    // A wait can't be taken back: a repo let go and watched again has a new loop, and the old one, on waking, ends here.
-    const token = {};
+    const token = { wait: null };
     watching.set(repo, token);
     cx.spawn(async (cx) => {
       try {
         while (watching.get(repo) === token) {
-          await watchFolder(repo);
+          token.wait = watchFolder(repo);
+          await token.wait;
+          token.wait = null;
           const mine = JSON.stringify([null, repo]);
           if (watching.get(repo) === token) refreshGit(Object.keys(git).filter((k) => git[k]?.repo === mine), cx);
         }
@@ -140,6 +155,7 @@ export function repoFacts({ exec, watchFolder, cx }) {
 
   return {
     update(snapshot, now) {
+      if (closed) return;
       const keys = due(snapshot, now);
       if (keys.size) refreshGit(keys, cx);
     },
@@ -148,6 +164,11 @@ export function repoFacts({ exec, watchFolder, cx }) {
       // An unanswered place (a cd just now) keeps the last trusted fact, so a frame cannot scatter its worktrees.
       if (git[k] || (k in git && !unsure.has(k))) lastGit[space.id] = git[k];
       return { git: lastGit[space.id] ?? null, answered: k in git };
+    },
+    close() {
+      closed = true;
+      pending.clear();
+      for (const repo of watching.keys()) unwatch(repo);
     },
   };
 }

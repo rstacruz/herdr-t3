@@ -8,6 +8,7 @@ import { MOTION } from "./motion.js";
 import { SLIM, CARD_GAP, LIST_TOP } from "./list-view.js";
 import { byCard } from "./row-model.js";
 import { setPinned, unpin } from "./pins.js";
+import { alpha } from "./color.js";
 
 export function inboxDrag(view, t, model, actions) {
   const { list, pins, pinned, put, out, busy, hidden, settledAt, working, since, state, viewing, napUntil, wake, inView, busyRows, napRows } = model;
@@ -58,7 +59,7 @@ export function inboxDrag(view, t, model, actions) {
   const BADGE = { pin: ["mods/t3-inbox/icons/pin.svg", "Pin"], unpin: ["mods/t3-inbox/icons/pin-off.svg", "Unpin"],
     settle: ["mods/t3-inbox/icons/circle-check.svg", "Settle"], unsettle: ["mods/t3-inbox/icons/undo.svg", "Un-settle"], wake: ["mods/t3-inbox/icons/alarm-clock-off.svg", "Wake"] };
   const badge = (v) => h_flex().id(`badge-${v}`).h(20).px(6).gap(4).flex_none().items_center().rounded(4)
-    .border(1).border_color(t.accent + "66").bg(t.accent + "1a").text_size(11).font_medium().text_color(t.accent)
+    .border(1).border_color(alpha(t.accent, "66")).bg(alpha(t.accent, "1a")).text_size(11).font_medium().text_color(t.accent)
     .child(svg(BADGE[v][0]).size(12).flex_none().text_color(t.accent)).child(BADGE[v][1]);
 
   // Settled shows one page; while a drag moves a row out of it the next row fills in, and one settled into
@@ -95,15 +96,15 @@ export function inboxDrag(view, t, model, actions) {
     .when(i === xs.length - 1, (el) => el.child(gap(`end-${section}`))));
   // T3's boundaries: Pinned and Active labels, shown only while dragging; the list opens room for them.
   const boundary = (id, text, section, to) => h_flex().id(id).flex_none().overflow_hidden().h(dragging ? 24 : 0)
-    .transition("height", MOTION).px(10).gap(8).items_center().text_size(12).font_medium()
+    .transition("height", MOTION).px(8).gap(8).items_center().text_size(12).font_medium()
     .on_mouse_move((_e, cx) => aim(to, cx))
     .when(dragging, (el) => el.child(div().text_color(hot(section) ? t.accent : t.muted).child(text))
-      .child(div().flex_1().h(1).bg(hot(section) ? t.accent + "80" : t.border)));
+      .child(div().flex_1().h(1).bg(hot(section) ? alpha(t.accent, "80") : t.border)));
   // An empty section still takes a drop: T3's dashed placeholder, accent while it's the target.
   const placeholder = (section, text) => div().id(`${section}-placeholder`).h(36).mx(2).mb(CARD_GAP).flex_none().flex().items_center().justify_center()
     .rounded(6).border(1).border_dashed().text_size(12)
-    .border_color(hot(section) ? t.accent + "66" : t.border).text_color(hot(section) ? t.accent : t.muted)
-    .when(hot(section), (el) => el.bg(t.accent + "0d"))
+    .border_color(hot(section) ? alpha(t.accent, "66") : t.border).text_color(hot(section) ? t.accent : t.muted)
+    .when(hot(section), (el) => el.bg(alpha(t.accent, "0d")))
     .on_mouse_move((_e, cx) => aim({ section }, cx))
     .child(text);
   // Picked up anywhere on a row that can move (not Working, not one whose change is still on its way). The clock's

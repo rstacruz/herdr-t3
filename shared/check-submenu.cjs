@@ -11,12 +11,22 @@ const context = vm.createContext({});
 vm.runInContext(src, context);
 const { SUB_DELAY, SUB_REST, SUB_ALIGN, subPlace, inTriangle, heading, hoverRow, subOpened, subLeft } = context.sub;
 
-// Placement: right of the row, its top 5 above the row's; left where only that fits; neither, the roomier side.
+// Placement (docs/internals/t3-tokens.md R4): against the row's right edge, its first row level with the row's; left where only
+// that fits; neither, the roomier side, narrowed to it. Never over the row.
 const row = { x: 100, y: 40, width: 200, height: 28 };
-assert.deepEqual({ ...subPlace(row, 220, 0, 1000) }, { side: "right", x: 300, y: 40 + SUB_ALIGN });
-assert.deepEqual({ ...subPlace({ ...row, x: 300, width: 100 }, 220, 0, 450) }, { side: "left", x: 80, y: 35 });
+const over = (p, r) => p.x < r.x + r.width && p.x + p.width > r.x;
+assert.deepEqual({ ...subPlace(row, 220, 0, 1000) }, { side: "right", x: 300, y: 40 + SUB_ALIGN, width: 220 });
+assert.deepEqual({ ...subPlace({ ...row, x: 300, width: 100 }, 220, 0, 450) }, { side: "left", x: 80, y: 35, width: 220 });
 assert.equal(subPlace({ ...row, x: 300 }, 220, 0, 600).side, "left");
-assert.equal(subPlace({ ...row, x: 50 }, 400, 0, 500).side, "right", "neither fits: more room on the right");
+const tight = { ...row, x: 50 }, roomy = subPlace(tight, 400, 0, 500);
+assert.deepEqual({ ...roomy }, { side: "right", x: 250, y: 35, width: 250 }, "neither fits: the roomier side, as wide as its room");
+assert.ok(!over(roomy, tight));
+// The Review settings' case: a panel on the pane's right, little room either side.
+const panelRow = { x: 145, y: 230, width: 310, height: 28 };
+for (const [w, l, r] of [[320, 8, 620], [240, 8, 470], [220, 0, 455]]) {
+  const p = subPlace(panelRow, w, l, r);
+  assert.ok(!over(p, panelRow) && p.x >= l && p.x + p.width <= r && p.width <= w, `${w} in ${l}–${r}: beside the row, inside the area`);
+}
 
 // The triangle, and heading toward a submenu on either side.
 assert.ok(inTriangle({ x: 1, y: 1 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 4 }));

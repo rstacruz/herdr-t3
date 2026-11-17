@@ -7,6 +7,7 @@ import { glow, tip, tipMark, keyOf } from "./tip.js";
 import { MOTION } from "./motion.js";
 import { detailsLive, detailsFor, detailsLine, detailsCard } from "./details.js";
 import { programIcon } from "./program.js";
+import { statusMark } from "./status-mark.js";
 import { stop, within } from "./focus.js";
 import { snoozeButton } from "./snooze.js";
 import { SLIM } from "./list-view.js";
@@ -50,7 +51,7 @@ export function inboxRowView(view, t, model, actions, drag) {
   // A button's icon and text brighten together: a hover style reaches the text but not the svg, so it's state.
   const lit = (id, color) => (view.hot === id ? t.foreground : color);
   // A space's mark, as t3-spaces draws it.
-  const avatar = (id, name, size) => projectMark(sp.find((s) => s.id === id) ?? { name: name ?? "" }, size, t, ps);
+  const avatar = (id, name, size) => projectMark("mods/t3-inbox", sp.find((s) => s.id === id) ?? { name: name ?? "" }, size, t, ps);
   // A control's label in a row belongs to the same group as the row's card, so it too opens at once.
   const delay = detailsLive(view) ? 0 : 150;
   // A right-click: the agent's menu, as an Agents row's and the tab bar title's; a page's card (Review) is its pane's. The
@@ -127,7 +128,7 @@ export function inboxRowView(view, t, model, actions, drag) {
         ? pill(t.working, svg("mods/workspace-chrome/spinner.svg").size(16).flex_none().text_color(t.working).spin(900),
           "Working", started(a) > 0 && started(a) < Infinity ? took(started(a), now) : null)
         : st === "blocked"
-          ? pill(t.blocked, div().size(16).flex_none().rounded(4).bg(t.blocked + "26").text_size(11).font_bold().flex().items_center().justify_center().child("!"), "Needs you")
+          ? pill(t.blocked, statusMark(t, "blocked", 16), "Needs you")
           : wokeMark
             || (st === "done"
               ? pill(t.ansi2, svg("mods/t3-inbox/icons/circle-check.svg").size(16).flex_none().text_color(t.ansi2), "Done")
@@ -158,8 +159,9 @@ export function inboxRowView(view, t, model, actions, drag) {
         .child(svg("mods/t3-inbox/icons/check.svg").size(14).flex_none().text_color(lit(id, t.muted)))
         .child("Settle")
         .when(offer, (el) => stop(view, t, id, el, 6)), { action: on ? settleKey() : undefined, delay }))));
-    // T3's card row: 10 and 8 in, rounded-md, its lines 20, 20 and 16 tall, 4 and 2 apart: 78 with all three.
-    const base = v_flex().id(`${ghost ? "ghost-" : ""}card-${a.address}`).px(10).py(8).flex_none().rounded(6)
+    // T3's card row: rounded-md, its lines 20, 20 and 16 tall, 4 and 2 apart: 78 with all three. 8 in, not T3's 10, so its words and
+    // icons end where the buttons' icons above do (docs/internals/t3-tokens.md「规则」R3).
+    const base = v_flex().id(`${ghost ? "ghost-" : ""}card-${a.address}`).px(8).py(8).flex_none().rounded(6)
       // A working row recedes until it's hovered or in view, as T3's.
       .when(!ghost, (el) => el.opacity(running(a) && !woke(a) && !on && !over ? 0.7 : 1).transition("opacity", MOTION));
     return (ghost ? base : row(base, a, details).role("button").accessibility_label(title(a)).on_hover(hover(a)).when(Boolean(menuMod), context(a))
@@ -223,7 +225,7 @@ export function inboxRowView(view, t, model, actions, drag) {
           : since(a) > 0 && ago(since(a), now)
         : !ghost && ago(settledAt(a)[0], now);
     const wokeMark = !ghost && busyRow && wokeOf(a);
-    const base = h_flex().id(`${ghost ? "ghost-" : ""}slim-${a.address}`).h(SLIM).px(10).gap(10).flex_none().items_center().rounded(6);
+    const base = h_flex().id(`${ghost ? "ghost-" : ""}slim-${a.address}`).h(SLIM).px(8).gap(10).flex_none().items_center().rounded(6);
     return (ghost ? base : row(base, a, details).role("button").accessibility_label(title(a)).on_hover(hover(a)).when(Boolean(menuMod), context(a)).on_click(open(a)))
       .when(on, (el) => el.bg(t.selected))
       .when(!on && !ghost && !dragging && !view.sweep?.moved, (el) => el.when(menu, (m) => m.bg(t.hover)).hover((s) => s.bg(t.hover)).active((s) => s.bg(t.selected)))

@@ -1,17 +1,18 @@
 // The space panel's file tree, one for the Files and Review pages (docs/adr/0013): T3's Pierre tree at its compact density.
 // The rows as data (treeRows, pathEntries, rowAt, treeKey) and one row drawn (treeRow); scripts/sync.sh copies this, with
-// list.js and file-icons.js, to both mods.
-import { div, svg, image } from "gpui-kit";
+// list.js and pierre-icons.js, to both mods.
+import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { scrollList } from "./list.js";
-import { fileIcon, folderIcon } from "./file-icons.js";
+import { pierreFileIcon } from "./pierre-icons.js";
+import { alpha } from "./color.js";
 
-// Pierre's compact density (factor 0.8): a 24 row; a level is its gap, the icon and the row's gap.
-export const TREE_ROW = 24;
-const PAD = 6.4, GAP = 4.8, LEVEL = 6.4 + 16 + GAP;
-const CLEAR = "#00000000";
+// Pierre's compact density (factor 0.8): a 24 row, 6.4 in, a 16 icon and a 4.8 gap; a level is one icon and its gap, so a
+// folder's rows start under its name.
+const TREE_ROW = 24;
+const PAD = 6.4, GAP = 4.8, ICON = 16, LEVEL = ICON + GAP;
 // A change's letter in its status's color, as T3's FileStatus.
-export const STATUS = { A: "#22c55e", D: "#ef4444", M: "#f59e0b", R: "#3b82f6", C: "#3b82f6" };
+const STATUS = { A: "#22c55e", D: "#ef4444", M: "#f59e0b", R: "#3b82f6", C: "#3b82f6" };
 
 // Names as people read them, case aside, digit runs by value. Keys are made once per entry: regexes per comparison exceed
 // Herdr's script budget on a folder of 12k entries. shortcut: digit runs past 16 digits compare as text; pad more if needed.
@@ -30,18 +31,19 @@ export function sortEntries(entries) {
  * folder is one row with it, `a / b / c`, as Pierre flattens them: the row is the last's (its path, its open), `top` the first's.
  * An entry with `flat: false` (a Review group) is never joined to another.
  */
-export function treeRows(childrenOf, isOpen) {
+export function treeRows(childrenOf, isOpen, flattenClosed = false) {
   const out = [];
-  const walk = (rel, depth) => {
+  const walk = (rel, depth, parents = []) => {
     for (const e of childrenOf(rel)) {
       const top = e.path ?? (rel ? `${rel}/${e.name}` : e.name);
-      let path = top, name = e.name, last = e;
-      for (let kids; last.dir && last.flat !== false && isOpen(path) && (kids = childrenOf(path)).length === 1 && kids[0].dir && kids[0].flat !== false;) {
+      let path = top, name = e.name, last = e, opened = isOpen(top);
+      for (let kids; last.dir && last.flat !== false && (isOpen(path) || flattenClosed) && (kids = childrenOf(path)).length === 1 && kids[0].dir && kids[0].flat !== false;) {
         last = kids[0]; name += ` / ${last.name}`; path = last.path ?? `${path}/${last.name}`;
+        opened = opened && isOpen(path);
       }
-      const open = Boolean(e.dir) && isOpen(path);
-      out.push({ ...last, path, top, name, depth, open });
-      if (open) walk(path, depth + 1);
+      const open = Boolean(e.dir) && opened;
+      out.push({ ...last, path, top, name, depth, open, parents });
+      if (open) walk(path, depth + 1, [...parents, path]);
     }
   };
   walk("", 0);
@@ -69,6 +71,23 @@ export function rowAt(rows, path) {
   return rows.findIndex((r) => r.path === path || (r.path.startsWith(`${path}/`) && `${path}/`.startsWith(`${r.top}/`)));
 }
 
+/** Build once with the rows, not during every repaint: focus lookup and the expand-all button's state. */
+export function treeIndex(rows) {
+  const at = new Map();
+  let folders = 0, expandable = 0, open = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    at.set(row.path, i);
+    if (row.dir) { folders++; if (!row.ignored) { expandable++; if (row.open) open++; } }
+    for (let path = row.top; path && path !== row.path;) {
+      at.set(path, i);
+      const slash = row.path.indexOf("/", path.length + 1);
+      path = slash < 0 ? row.path : row.path.slice(0, slash);
+    }
+  }
+  return { at, folders, allExpanded: expandable > 0 && expandable === open };
+}
+
 /**
  * Pierre's keys from row `at` (-1: none yet): ↑/↓ move, Home/End to the ends, → opens a folder or goes into it, ← closes
  * one or goes to the folder above, Enter picks. `{ at }` to move to, `{ toggle }` or `{ pick }` a row, or null.
@@ -81,8 +100,8 @@ export function treeKey(key, rows, at) {
   if (key === "home") return { at: 0 };
   if (key === "end") return { at: n - 1 };
   if (!row) return null;
-  if (key === "enter") return { pick: row };
-  if (key === "right" && row.dir) return !row.open ? { toggle: row } : rows[at + 1]?.depth > row.depth ? { at: at + 1 } : null;
+  if (key === "enter" || key === "space") return { pick: row };
+  if (key === "right") return row.dir && !row.open ? { toggle: row } : at < n - 1 ? { at: at + 1 } : null;
   if (key === "left") {
     if (row.dir && row.open) return { toggle: row };
     for (let i = at - 1; i >= 0; i--) if (rows[i].depth < row.depth) return { at: i };
@@ -94,34 +113,41 @@ export function treeKey(key, rows, at) {
 /** @param {any} view @param {string} id */
 export const revealRow = (view, id, path) => { view.treeReveal = { ...view.treeReveal, [id]: path }; };
 
-/** The rows in a list that draws only those in view; `draw(row, i)` makes one, handlers and all. */
+/** The rows in a list that draws only those in view; `draw(row, i)` makes one, handlers and all. A row's box 12 in on both
+ *  sides, the column head's edge (t3-tokens「规则」R1), not Pierre's 16: 12 less the rows' 1.6. */
 export function treeList(view, id, rows, draw) {
   const want = view.treeReveal?.[id], at = want == null ? -1 : rowAt(rows, want);
   if (at >= 0 && view.listHeight?.[id] !== undefined) view.treeReveal = { ...view.treeReveal, [id]: undefined };
-  return scrollList(view, id, { count: rows.length, row: TREE_ROW, at, draw: (i) => draw(rows[i], i), wheeled: () => {} });
+  return div().id(`${id}-viewport`).size_full().px(10.4)
+    .child(scrollList(view, id, { count: rows.length, row: TREE_ROW, at, draw: (i) => draw(rows[i], i), wheeled: () => {} }).size_full());
 }
 
 /**
- * One row, as Pierre's: a level's indent, a folder's chevron, the page's own `leading` (Review's reviewed box), the icon, the
- * name, then a change's letter and the page's own `trailing`. Selected on the text color at 12%, hovered at 7%; the row the keys are on ringed. `mod` is the mod's folder,
- * whose icons/ hold the chevrons and file-icons.js's; `icon`, a 16 element, stands in for the file or folder icon.
+ * One row, as Pierre's, the same on the Files and Review pages: a level's indent, the page's own `leading` in a fixed lane
+ * before the icon (Review's reviewed box), the icon, the name, then a change's letter and the page's own `trailing`. No
+ * chevron: a folder's icon opens with it. A file's icon is its Pierre one, `icon` stands in for either (a Review group's).
+ * Selected on the text color at 12%, hovered at 7%; the row the keys are on ringed; `dim` (ignored, reviewed) greys the name
+ * and halves the icon. `guides`, while the tree is hovered: a line down each open folder, under its first box (`leading`, else
+ * its icon), so it never crosses a child's box. `mod` is the mod's
+ * folder, whose icons/ hold icons/tree and icons/pierre.
  */
-/** @param {any} t @param {string} mod @param {any} row @param {string} id @param {{ selected?: boolean, focused?: boolean, status?: string, dim?: boolean, struck?: boolean, leading?: any, trailing?: any, icon?: any }} options */
-export function treeRow(t, mod, row, id, { selected = false, focused = false, status, dim = false, struck = false, leading, trailing, icon } = {}) {
-  return h_flex().id(id).h(TREE_ROW).mx(2).pl(PAD + row.depth * LEVEL).pr(PAD).gap(GAP).items_center().rounded(6).text_size(12)
-    .border_1().border_color(focused ? t.ring : CLEAR)
-    .when(selected, (el) => el.bg(t.foreground + "1f")).when(!selected, (el) => el.hover((s) => s.bg(t.foreground + "12")))
-    .child(div().size(16).flex_none().flex().items_center().justify_center()
-      .when(Boolean(row.dir), (el) => el.child(svg(`${mod}/icons/chevron-${row.open ? "down" : "right"}.svg`).size(12).text_color(t.dim))))
+/** @param {any} t @param {string} mod @param {any} row @param {string} id @param {{ selected?: boolean, focused?: boolean, context?: boolean, guides?: boolean, status?: string, dim?: boolean, struck?: boolean, leading?: any, trailing?: any, icon?: any, drag?: { path: string, on: string } }} options */
+export function treeRow(t, mod, row, id, { selected = false, focused = false, context = false, guides = false, status, dim = false, struck = false, leading, trailing, icon, drag } = {}) {
+  return h_flex().id(id).relative().h(TREE_ROW).mx(1.6).pl(PAD + row.depth * LEVEL).pr(PAD).gap(GAP).items_center().rounded(6).text_size(12).cursor_pointer()
+    .when(Boolean(drag), el => el.drag_paths([drag.path], { on: drag.on }))
+    .when(selected, (el) => el.bg(alpha(t.foreground, "1f"))).when(!selected, (el) => el.hover((s) => s.bg(alpha(t.foreground, "12"))))
+    .when(context && !selected, el => el.bg(alpha(t.foreground, "12")))
     .when(Boolean(leading), (el) => el.child(leading))
-    .child((icon ?? image(`${mod}/${row.dir ? folderIcon(row.path, row.open) : fileIcon(row.path)}`).size(16).flex_none()).when(dim, (el) => el.opacity(0.5)))
-    .child(div().flex_1().min_w(0).truncate().when(dim, (el) => el.opacity(0.5)).when(struck, (el) => el.line_through()).child(row.name))
+    .child((icon ?? (row.dir ? svg(`${mod}/icons/tree/folder${row.open ? "-open" : ""}.svg`).size(ICON).flex_none().text_color(t.dim) : pierreFileIcon(t, mod, row.path))).when(dim, (el) => el.opacity(0.5)))
+    .child(div().flex_1().min_w(0).truncate().when(dim, (el) => el.text_color(t.dim)).when(struck, (el) => el.line_through()).child(row.label ?? row.name))
     .when(Boolean(status), (el) => el.child(statusBadge(status)))
-    .when(Boolean(trailing), (el) => el.child(trailing));
+    .when(Boolean(trailing), (el) => el.child(trailing))
+    .when(focused, el => el.child(div().absolute().inset_0().rounded(6).border_1().border_color(t.accent)))
+    .when(guides, el => el.children(Array.from({ length: row.depth }, (_, level) => div().absolute().top(0).bottom(0).left(PAD + level * LEVEL + ICON / 2 - 0.5).w(1).bg(alpha(t.foreground, "24")))));
 }
 
 // The letter in its status's color, on a tenth of it; T3's sm Badge.
 export function statusBadge(letter) {
   const color = STATUS[letter] ?? STATUS.M;
-  return div().h(16).min_w(16).px(3).flex_none().flex().items_center().justify_center().rounded(4).font_medium().text_size(10).text_color(color).bg(color + "1a").child(letter);
+  return div().h(16).min_w(16).px(3).flex_none().flex().items_center().justify_center().rounded(4).font_medium().text_size(10).text_color(color).bg(alpha(color, "1a")).child(letter);
 }

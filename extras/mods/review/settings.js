@@ -2,10 +2,11 @@ import { div, svg, image } from "gpui-kit";
 import { h_flex, Switch } from "gpui-base";
 import { exec, window as appWindow } from "herdr";
 import { request } from "./daemon.js";
-import { scrollList } from "./list.js";
+import { scrollList, openLit } from "./list.js";
 import { hoverRow, subOpened, subLeft } from "./submenu.js";
+import { menuRow, menuHint } from "./menu-row.js";
 import { wrapLines, setWrapLines } from "./store.js";
-import { PANE, MODEL_ROW, SPLIT_MIN, pref, setPref, pickMark, searchField, popover, toPane, subState, subAt } from "./controls.js";
+import { PANE, MODEL_ROW, SPLIT_MIN, BELOW, pref, setPref, pickMark, searchField, popover, toPane, subState, subAt } from "./controls.js";
 
 // Models the settings list before the search must narrow them.
 const LISTED = 200;
@@ -96,15 +97,15 @@ export function pageRows(view) {
   return rows.map(m => ({ id: m.key ?? `model-${m.id}`, name: m.name, detail: m.detail, on: m.id === model, pick: (cx) => saveLlm(view, { agentModel: m.id }, cx) }));
 }
 
-// The panel's rows at main.js's top 38, right 16, past its border and padding: a label, four choices of 36, a rule, a
+// The panel's rows at main.js's top (BELOW), right 40, past its border and padding: a label, four choices of 36, a rule, a
 // label and the switch, then Language, Agent and Model.
 // shortcut: assumes all three rows and no error note above them; a row the pointer is on gives its own bounds instead.
-const navRow = (view, id) => ({ x: view.width - 16 - 320 + 5, y: 38 + 5 + 237 + MODEL_ROW * ["language", "agent", "model"].indexOf(id), width: 310, height: MODEL_ROW });
+const navRow = (view, id) => ({ x: view.width - 40 - 320 + 5, y: BELOW + 5 + 237 + MODEL_ROW * ["language", "agent", "model"].indexOf(id), width: 310, height: MODEL_ROW });
 
 // A setting's submenu, beside its row (`row`, in the pane), which stays lit. A press on the panel stops there, so the
 // keyboard is sent where the submenu wants it: the model search, else the pane's keys.
-export function openPage(view, id, cx, row = null) {
-  if (view.settingsPage !== id) { view.modelInput.set_value(""); view.pageAt = -1; }
+export function openPage(view, id, cx, row = null, keys = false) {
+  if (view.settingsPage !== id) { view.modelInput.set_value(""); view.pageAt = openLit(keys); }
   view.settingsPage = id; view.subRow = row ?? navRow(view, id);
   subOpened(subState(view), id);
   (id === "model" ? view.modelInput : view.handle).focus();
@@ -186,8 +187,8 @@ export function settingsPanel(view, t) {
       .child(link("credit-fork", "fork", "https://github.com/JinJieBeWater/pulls.review")).child("by")
       .child(link("credit-jinjie", "@JinJieBeWater", "https://github.com/JinJieBeWater")),
   ];
-  // Clipped: whatever outgrows the height is cut rather than drawn past the pane, 38 down and 8 short of its foot.
-  return popover(view, t, "review-settings-panel").w(320).max_h(Math.max(160, view.height - 46)).overflow_hidden().p(4)
+  // Clipped: whatever outgrows the height is cut rather than drawn past the pane, BELOW down and 8 short of its foot.
+  return popover(view, t, "review-settings-panel").w(320).max_h(Math.max(160, view.height - BELOW - 8)).overflow_hidden().p(4)
     .children(rows.filter(Boolean));
 }
 
@@ -196,20 +197,17 @@ export function settingsPanel(view, t) {
 export function settingsSub(view, t) {
   const page = view.settingsPage, model = page === "model", { matches, shown } = view.models(), typed = view.modelInput.value().trim();
   const row = view.subRow ?? navRow(view, page), options = view.pageRows();
-  const choice = (r, i) => h_flex().id(r.id).h(28).px(8).gap(8).flex_none().items_center().rounded(4)
-    .when(i === view.pageAt, el => el.bg(t.selected)).on_hover((on, cx) => { if (on && view.pageAt !== i) { view.pageAt = i; cx.notify(); } })
-    .role("radio_button").accessibility_label(r.name).on_click((_e, cx) => { settingsBack(view, cx); r.pick(cx); })
-    .child(pickMark(t, r.on))
-    .child(div().flex_1().min_w(0).truncate().child(r.name))
-    .when(Boolean(r.detail), el => el.child(div().flex_none().text_size(12).text_color(t.dim).child(r.detail)));
+  // Menu rows (t3-tokens「菜单行」): lit by the pointer or the keys, out when the pointer leaves.
+  const choice = (r, i) => menuRow(view, t, r.id, { at: [view, "pageAt", i], label: r.name, lead: pickMark(r.on),
+    trail: r.detail ? menuHint(t, r.detail) : null, pick: (cx) => { settingsBack(view, cx); r.pick(cx); } }).role("radio_button");
   // Pi lists hundreds: past LISTED the search finds the rest.
   const notes = [model && shown.length < matches.length && note(t, `${matches.length - LISTED} more: search to narrow`),
     model && Boolean(typed) && !matches.length && note(t, `Enter to use “${typed}”`)].filter(Boolean);
   // Its border and padding, the search and its margins, and a note's 32 each.
   const chrome = 10 + (model ? 43 : 0) + notes.length * 32;
   const listHeight = Math.min(options.length * MODEL_ROW, Math.max(MODEL_ROW * 3, Math.min(model ? 368 : Infinity, view.height - 16) - chrome));
-  // 320 where there's room left of the panel, else narrower down to 240 rather than over its rows.
-  const { at: box, w } = subAt(view, row, [240, 320], chrome + listHeight);
+  // 320 where there's room beside the panel, else narrower, never over its row (subAt).
+  const { at: box, w } = subAt(view, row, 320, chrome + listHeight);
   // The pointer on it: nothing pending on the panel's rows opens or closes it.
   return box
     .child(popover(view, t, "review-settings-sub", false).w(w).p(4).on_hover((on) => { if (on) subLeft(subState(view)); })
